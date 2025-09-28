@@ -1,0 +1,24 @@
+# Set default behavior for line endings
+* text=auto
+# ไฟล์ text: ใช้ LF
+*.js     text eol=lf
+*.ts     text eol=lf
+*.tsx    text eol=lf
+*.json   text eol=lf
+*.css    text eol=lf
+*.html   text eol=lf
+*.md     text eol=lf
+*.yml    text eol=lf
+*.yaml   text eol=lf
+
+# binary files
+*.png    binary
+*.jpg    binary
+*.svg    binary
+*.ico    binary
+*.woff2  binary
+
+# node_modules (แม้ไม่ได้ track ไว้ใน Git ก็กันไว้ก่อน)
+node_modules/** -text
+# ignore files
+.DS_Store -text
