@@ -97,7 +97,7 @@ export default function NavigationButtons() {
       onClick: isLoggedIn ? handleProfileClick : undefined
     },
     { 
-      text: "Cart", 
+      text: "Menu", 
       path: "/cart",
       requireAuth: false
     },

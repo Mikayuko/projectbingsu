@@ -49,7 +49,7 @@ export default function GalleryPage() {
             </button>
           </Link>
           <h1 className="text-4xl md:text-5xl font-['Iceland'] text-white text-center">
-            Bingsu Gallery
+            Bingsu Menu
           </h1>
           <div className="w-8"></div>
         </div>
