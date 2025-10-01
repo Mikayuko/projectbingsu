@@ -11,6 +11,7 @@ const authRoutes = require('./routes/auth');
 const orderRoutes = require('./routes/orders');
 const menuCodeRoutes = require('./routes/menuCodes');
 const reviewRoutes = require('./routes/reviews');
+const userRoutes = require('./routes/users');
 
 // Initialize express app
 const app = express();
@@ -32,6 +33,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/menu-codes', menuCodeRoutes);
 app.use('/api/reviews', reviewRoutes);
+app.use('/api/users', userRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
