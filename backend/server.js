@@ -16,27 +16,43 @@ const userRoutes = require('./routes/users');
 // Initialize express app
 const app = express();
 
-// CORS Configuration - รองรับทั้ง Vercel และ localhost
+// CORS Configuration - รองรับ Render (Backend) + Vercel (Frontend)
 const allowedOrigins = [
-  'http://localhost:3000',
-  'https://projectbingsu.vercel.app/', // เปลี่ยนเป็น URL ของคุณบน Vercel
-  process.env.FRONTEND_URL
+  'http://localhost:3000',                          // Local development
+  'http://localhost:5173',                          // Vite local (ถ้าใช้)
+  'https://projectbingsu.vercel.app',              // Vercel production
+  'https://projectbingsu-git-main.vercel.app',     // Vercel preview branches
+  'https://*.vercel.app',                          // Vercel preview deployments
+  process.env.FRONTEND_URL                          // From .env
 ].filter(Boolean);
 
 app.use(cors({
   origin: function(origin, callback) {
-    // อนุญาตให้ requests ที่ไม่มี origin (เช่น Postman)
+    // อนุญาต requests ที่ไม่มี origin (Postman, mobile apps, server-to-server)
     if (!origin) return callback(null, true);
     
-    if (allowedOrigins.indexOf(origin) !== -1 || process.env.NODE_ENV === 'development') {
+    // ตรวจสอบว่า origin อยู่ใน allowedOrigins หรือไม่
+    const isAllowed = allowedOrigins.some(allowed => {
+      if (allowed.includes('*')) {
+        // Support wildcard domains
+        const pattern = new RegExp(allowed.replace('*', '.*'));
+        return pattern.test(origin);
+      }
+      return allowed === origin;
+    });
+    
+    if (isAllowed || process.env.NODE_ENV === 'development') {
       callback(null, true);
     } else {
+      console.warn(`CORS blocked origin: ${origin}`);
       callback(new Error('Not allowed by CORS'));
     }
   },
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  exposedHeaders: ['Content-Range', 'X-Content-Range'],
+  maxAge: 86400 // 24 hours
 }));
 
 app.use(express.json());
@@ -59,7 +75,8 @@ app.get('/api/health', (req, res) => {
     status: 'OK', 
     message: 'Bingsu API is running',
     timestamp: new Date().toISOString(),
-    environment: process.env.NODE_ENV || 'development'
+    environment: process.env.NODE_ENV || 'development',
+    mongodb: mongoose.connection.readyState === 1 ? 'Connected' : 'Disconnected'
   });
 });
 
@@ -67,7 +84,15 @@ app.get('/api/health', (req, res) => {
 app.get('/', (req, res) => {
   res.json({ 
     message: 'Bingsu API Server',
-    version: '1.0.0'
+    version: '1.0.0',
+    endpoints: {
+      auth: '/api/auth',
+      orders: '/api/orders',
+      menuCodes: '/api/menu-codes',
+      reviews: '/api/reviews',
+      users: '/api/users',
+      health: '/api/health'
+    }
   });
 });
 
@@ -90,4 +115,5 @@ const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`🍧 Bingsu Backend Server running on port ${PORT}`);
   console.log(`📍 API available at http://localhost:${PORT}/api`);
+  console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
 });
