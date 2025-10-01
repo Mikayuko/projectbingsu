@@ -6,8 +6,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { api, isAdmin, getCurrentUser } from '@/utils/api';
 import { useRouter } from 'next/router';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
+
 
 interface MenuData {
   flavors: Array<{ name: string; price: number; active: boolean }>;
@@ -209,79 +208,12 @@ export default function DataManagementPage() {
     linkElement.click();
   };
 
-  const generatePDFReport =  () => {
-    try {
-      // Dynamic imports
+  
+ 
       
-      
-      const doc = new jsPDF();
-      
-      // Title
-      doc.setFontSize(20);
-      doc.text('Bingsu Statistics Report', 14, 20);
-      
-      // Date
-      doc.setFontSize(10);
-      doc.text(`Generated: ${new Date().toLocaleString()}`, 14, 30);
-      
-      // Summary Statistics
-      doc.setFontSize(14);
-      doc.text('Summary Statistics', 14, 45);
-      
-      const summaryData = [
-        ['Total Users', stats.totalUsers.toString()],
-        ['Total Orders Today', stats.totalOrders.toString()],
-        ["Today's Revenue", `${stats.totalRevenue} Baht`],
-        ['Total Reviews', stats.totalReviews.toString()],
-        ['Average Rating', `${stats.averageRating.toFixed(1)} Stars`],
-        ['Active Menu Codes', stats.activeCodes.toString()]
-      ];
-      
-      autoTable(doc, {
-        startY: 50,
-        head: [['Metric', 'Value']],
-        body: summaryData,
-        theme: 'grid',
-        headStyles: { fillColor: [105, 128, 108] },
-        margin: { left: 14 }
-      });
-      
-      // Users Overview (if available)
-      if (users.length > 0) {
-        doc.addPage();
-        doc.setFontSize(14);
-        doc.text('Users Overview', 14, 20);
+
         
-        const usersData = users.slice(0, 20).map(user => [
-          user.fullName || '',
-          user.email || '',
-          user.role || '',
-          (user.orderCount || 0).toString(),
-          (user.loyaltyPoints || 0).toString(),
-          user.isActive !== false ? 'Active' : 'Inactive'
-        ]);
-        
-        autoTable(doc, {
-          startY: 25,
-          head: [['Name', 'Email', 'Role', 'Orders', 'Points', 'Status']],
-          body: usersData,
-          theme: 'striped',
-          headStyles: { fillColor: [105, 128, 108] },
-          margin: { left: 14 },
-          styles: { fontSize: 8 }
-        });
-      }
-      
-      // Save PDF
-      const filename = `bingsu_report_${new Date().toISOString().split('T')[0]}.pdf`;
-      doc.save(filename);
-      
-      alert('PDF report generated successfully!');
-    } catch (error) {
-      console.error('Failed to generate PDF:', error);
-      alert('Failed to generate PDF: ' + (error as Error).message);
-    }
-  };
+   
 
   return (
     <div className="min-h-screen bg-[#EBE6DE]">
