@@ -2,29 +2,35 @@
 const nextConfig = {
   reactStrictMode: true,
   
-  // บังคับให้ build ผ่าน
-  typescript: {
-    ignoreBuildErrors: true  // ⚠️ บังคับ
-  },
+  // Output standalone for better Vercel deployment
+  output: 'standalone',
   
-  eslint: {
-    ignoreDuringBuilds: true  // ⚠️ บังคับ
-  },
-  
+  // Image configuration
   images: {
+    domains: ['localhost'],
     unoptimized: true,
   },
 
-  output: 'standalone',
-  
-  // เร่ง build speed
-  swcMinify: true,
-  
-  webpack: (config) => {
+  // Ignore backend directory
+  webpack: (config, { isServer }) => {
     config.watchOptions = {
       ignored: ['**/backend/**', '**/node_modules/**']
     };
     return config;
+  },
+
+  // Handle build errors gracefully
+  typescript: {
+    ignoreBuildErrors: false,
+  },
+
+  eslint: {
+    ignoreDuringBuilds: false,
+  },
+
+  // Experimental features
+  experimental: {
+    optimizeCss: false,
   },
 };
 
