@@ -43,6 +43,15 @@ export default function OrderTrackingPage() {
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [recentOrders, setRecentOrders] = useState<OrderData[]>([]);
 
+  // Check if router is ready
+  if (!router.isReady) {
+    return (
+      <div className="min-h-screen bg-[#EBE6DE] flex items-center justify-center">
+        <p className="text-2xl text-[#69806C] font-['Iceland']">Loading...</p>
+      </div>
+    );
+  }
+
   useEffect(() => {
     if (code) {
       setCustomerCode(code as string);
@@ -50,21 +59,18 @@ export default function OrderTrackingPage() {
     }
   }, [code]);
 
-  // Load recent orders on client side only
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const orders = JSON.parse(localStorage.getItem('bingsuOrders') || '[]');
       setRecentOrders(orders.slice(-3));
     }
-  }, [order]); // Update when order changes
+  }, [order]);
 
-  // Auto-update order status
   useEffect(() => {
     if (order && autoRefresh && order.status !== 'Completed' && order.status !== 'Cancelled') {
       const interval = setInterval(() => {
-        // Simulate status progression
         updateOrderStatus();
-      }, 10000); // Update every 10 seconds
+      }, 10000);
 
       return () => clearInterval(interval);
     }
@@ -80,7 +86,6 @@ export default function OrderTrackingPage() {
       const newStatus = statusFlow[currentIndex + 1];
       const updatedOrder = { ...order, status: newStatus };
       
-      // Update in localStorage
       const orders = JSON.parse(localStorage.getItem('bingsuOrders') || '[]');
       const orderIndex = orders.findIndex((o: OrderData) => o.customerCode === order.customerCode);
       if (orderIndex !== -1) {
@@ -102,16 +107,13 @@ export default function OrderTrackingPage() {
     setError('');
 
     try {
-      // Check if we're on client side
       if (typeof window !== 'undefined') {
-        // First try to find in localStorage
         const localOrders = JSON.parse(localStorage.getItem('bingsuOrders') || '[]');
         const localOrder = localOrders.find((o: OrderData) => 
           o.customerCode.toLowerCase() === trackingCode.toLowerCase()
         );
         
         if (localOrder) {
-          // Add orderId if not present
           if (!localOrder.orderId) {
             localOrder.orderId = `ORD${Math.floor(Math.random() * 10000).toString().padStart(5, '0')}`;
           }
@@ -122,9 +124,9 @@ export default function OrderTrackingPage() {
         }
       }
 
-      // Try API if available
       try {
-        const response = await fetch(`http://localhost:5000/api/orders/track/${trackingCode}`);
+        const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+        const response = await fetch(`${API_URL}/orders/track/${trackingCode}`);
         if (response.ok) {
           const result = await response.json();
           setOrder(result.order);
@@ -133,7 +135,6 @@ export default function OrderTrackingPage() {
           throw new Error('Order not found in database');
         }
       } catch (apiError) {
-        // If API fails, show not found
         setError('Order not found. Please check your customer code.');
         setOrder(null);
       }
@@ -148,7 +149,6 @@ export default function OrderTrackingPage() {
   const handleTrack = () => {
     if (customerCode) {
       trackOrder(customerCode);
-      // Update URL with code
       router.push(`/order/track?code=${customerCode}`, undefined, { shallow: true });
     }
   };
@@ -182,7 +182,6 @@ export default function OrderTrackingPage() {
   const getStepTime = (step: string): string | null => {
     if (!order) return null;
     
-    // For demo, show current time for active status
     if (step === order.status) {
       return new Date().toLocaleString('th-TH', {
         hour: '2-digit',
@@ -192,7 +191,6 @@ export default function OrderTrackingPage() {
       });
     }
     
-    // Show order creation time for Pending
     if (step === 'Pending' && order.createdAt) {
       return new Date(order.createdAt).toLocaleString('th-TH', {
         hour: '2-digit',
@@ -205,7 +203,6 @@ export default function OrderTrackingPage() {
     return null;
   };
 
-  // Demo function to manually update status
   const manualUpdateStatus = () => {
     if (!order || typeof window === 'undefined') return;
     
@@ -216,7 +213,6 @@ export default function OrderTrackingPage() {
       const newStatus = statusFlow[currentIndex + 1];
       const updatedOrder = { ...order, status: newStatus };
       
-      // Update in localStorage
       const orders = JSON.parse(localStorage.getItem('bingsuOrders') || '[]');
       const orderIndex = orders.findIndex((o: OrderData) => o.customerCode === order.customerCode);
       if (orderIndex !== -1) {
@@ -231,7 +227,6 @@ export default function OrderTrackingPage() {
 
   return (
     <div className="min-h-screen bg-[#EBE6DE]">
-      {/* Header */}
       <div className="w-full h-[100px] bg-[#69806C] flex items-center px-10 shadow-lg">
         <Link href="/home">
           <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center cursor-pointer hover:bg-white/30 transition">
@@ -242,7 +237,6 @@ export default function OrderTrackingPage() {
       </div>
 
       <div className="max-w-4xl mx-auto px-4 py-10">
-        {/* Search Section */}
         <div className="bg-white rounded-xl shadow-lg p-6 mb-8">
           <h2 className="text-2xl text-[#69806C] font-['Iceland'] mb-4">Enter Customer Code</h2>
           <div className="flex gap-4">
@@ -273,11 +267,10 @@ export default function OrderTrackingPage() {
           )}
         </div>
 
-        {/* Show Recent Orders (Demo Helper) */}
         {!order && !loading && recentOrders.length > 0 && (
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-8">
             <p className="text-blue-800 font-['Iceland'] text-lg mb-2">
-              💡  Tip: Recent orders from this browser
+              Recent orders from this browser
             </p>
             <div className="text-sm text-blue-700 font-['Iceland']">
               <p>Your recent customer codes:</p>
@@ -297,19 +290,16 @@ export default function OrderTrackingPage() {
           </div>
         )}
 
-        {/* No orders message */}
         {!order && !loading && recentOrders.length === 0 && (
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-8">
             <p className="text-blue-800 font-['Iceland'] text-lg">
-              💡  No recent orders. Create a new order from the home page!
+              No recent orders. Create a new order from the home page!
             </p>
           </div>
         )}
 
-        {/* Order Details */}
         {order && (
           <div className="bg-white rounded-xl shadow-lg p-6">
-            {/* Status Banner */}
             <div className={`${getStatusColor(order.status)} text-white rounded-lg p-6 mb-6 text-center`}>
               <div className="text-6xl mb-2">{getStatusIcon(order.status)}</div>
               <h3 className="text-3xl font-['Iceland'] mb-2">Order {order.status}</h3>
@@ -318,7 +308,6 @@ export default function OrderTrackingPage() {
               </p>
             </div>
 
-            {/* Demo Controls */}
             {order.status !== 'Completed' && (
               <div className="mb-6 bg-gray-50 rounded-lg p-4">
                 <div className="flex items-center justify-between">
@@ -343,7 +332,6 @@ export default function OrderTrackingPage() {
               </div>
             )}
 
-            {/* Order Timeline */}
             <div className="mb-6">
               <h4 className="text-xl text-[#69806C] font-['Iceland'] mb-4">Order Progress</h4>
               <div className="relative pl-8">
@@ -378,7 +366,6 @@ export default function OrderTrackingPage() {
               </div>
             </div>
 
-            {/* Order Details Grid */}
             <div className="border-t pt-6">
               <h4 className="text-xl text-[#69806C] font-['Iceland'] mb-4">Order Details</h4>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-lg">
@@ -424,11 +411,10 @@ export default function OrderTrackingPage() {
               )}
             </div>
 
-            {/* Status Messages */}
             {order.status === 'Pending' && (
               <div className="mt-6 p-4 bg-yellow-50 border-2 border-yellow-200 rounded-lg">
                 <p className="text-yellow-800 font-['Iceland'] text-lg">
-                  ⏱️ Estimated preparation time: 10-15 minutes
+                  Estimated preparation time: 10-15 minutes
                 </p>
                 <p className="text-yellow-700 font-['Iceland'] text-sm mt-1">
                   We're reviewing your order and will start preparing it soon!
@@ -439,7 +425,7 @@ export default function OrderTrackingPage() {
             {order.status === 'Preparing' && (
               <div className="mt-6 p-4 bg-blue-50 border-2 border-blue-200 rounded-lg">
                 <p className="text-blue-800 font-['Iceland'] text-lg">
-                  👨‍🍳 Your Bingsu is being crafted with care!
+                  Your Bingsu is being crafted with care!
                 </p>
                 <p className="text-blue-700 font-['Iceland'] text-sm mt-1">
                   Our chef is preparing your delicious shaved ice treat.
@@ -450,7 +436,7 @@ export default function OrderTrackingPage() {
             {order.status === 'Ready' && (
               <div className="mt-6 p-4 bg-green-50 border-2 border-green-200 rounded-lg animate-pulse">
                 <p className="text-green-800 font-['Iceland'] text-xl font-bold">
-                  🎉 Your order is ready for pickup!
+                  Your order is ready for pickup!
                 </p>
                 <p className="text-green-700 font-['Iceland'] text-sm mt-1">
                   Please come to the counter with your customer code: {order.customerCode}
@@ -461,7 +447,7 @@ export default function OrderTrackingPage() {
             {order.status === 'Completed' && (
               <div className="mt-6 p-4 bg-gray-50 border-2 border-gray-200 rounded-lg">
                 <p className="text-gray-800 font-['Iceland'] text-lg">
-                  ✨ Thank you for your order!
+                  Thank you for your order!
                 </p>
                 <p className="text-gray-600 font-['Iceland'] text-sm mt-1">
                   We hope you enjoyed your Bingsu. See you again soon!
@@ -471,7 +457,6 @@ export default function OrderTrackingPage() {
           </div>
         )}
 
-        {/* Quick Actions */}
         <div className="mt-8 flex justify-center gap-4">
           <Link href="/home">
             <button className="px-6 py-3 bg-[#69806C] text-white font-['Iceland'] text-lg rounded-lg hover:bg-[#5a6e5e] transition shadow-lg">
@@ -487,7 +472,6 @@ export default function OrderTrackingPage() {
           )}
         </div>
 
-        {/* Help Section */}
         <div className="mt-12 text-center text-gray-500 font-['Iceland']">
           <p>Need help? Contact our staff at the counter</p>
           <p className="text-sm mt-2">Customer codes start with # followed by 5 characters</p>
@@ -495,4 +479,9 @@ export default function OrderTrackingPage() {
       </div>
     </div>
   );
+}
+
+// Force SSR - ป้องกัน pre-render error
+export async function getServerSideProps() {
+  return { props: {} };
 }
