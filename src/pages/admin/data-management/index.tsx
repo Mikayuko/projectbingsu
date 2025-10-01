@@ -6,6 +6,8 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { api, isAdmin, getCurrentUser } from '@/utils/api';
 import { useRouter } from 'next/router';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 interface MenuData {
   flavors: Array<{ name: string; price: number; active: boolean }>;
@@ -207,11 +209,10 @@ export default function DataManagementPage() {
     linkElement.click();
   };
 
-  const generatePDFReport = async () => {
+  const generatePDFReport =  () => {
     try {
       // Dynamic imports
-      const jsPDF = (await import('jspdf')).default;
-      const autoTable = (await import('jspdf-autotable')).default;
+      
       
       const doc = new jsPDF();
       
