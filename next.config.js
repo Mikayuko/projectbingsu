@@ -2,6 +2,9 @@
 const nextConfig = {
   reactStrictMode: true,
   
+  // Output standalone for better Vercel deployment
+  output: 'standalone',
+  
   // Image configuration
   images: {
     domains: ['localhost'],
@@ -10,23 +13,24 @@ const nextConfig = {
 
   // Ignore backend directory
   webpack: (config, { isServer }) => {
-    // Ignore backend files during build
     config.watchOptions = {
       ignored: ['**/backend/**', '**/node_modules/**']
     };
     return config;
   },
 
-  // TypeScript config
+  // Handle build errors gracefully
   typescript: {
-    // ⚠️ เปลี่ยนเป็น true ถ้ามี TS errors ที่แก้ไม่ได้
     ignoreBuildErrors: false,
   },
 
-  // ESLint config
   eslint: {
-    // ⚠️ เปลี่ยนเป็น true ถ้ามี ESLint errors
     ignoreDuringBuilds: false,
+  },
+
+  // Experimental features
+  experimental: {
+    optimizeCss: false,
   },
 };
 
