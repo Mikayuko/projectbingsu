@@ -104,8 +104,8 @@ export default function ProfilePage() {
   const ensureUserData = (currentUser: User): User => {
     return {
       ...currentUser,
-      loyaltyPoints: currentUser.loyaltyPoints || Math.floor(Math.random() * 100),
-      loyaltyCard: currentUser.loyaltyCard || {
+      loyaltyPoints: currentUser.loyaltyPoints ?? Math.floor(Math.random() * 100),
+      loyaltyCard: currentUser.loyaltyCard ?? {
         stamps: Math.floor(Math.random() * 9),
         totalFreeDrinks: Math.floor(Math.random() * 3)
       }

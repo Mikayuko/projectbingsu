@@ -21,6 +21,8 @@ export default function LoginPage() {
     try {
       const result = await api.login(email, password);
 
+      console.log('Login result:' , result);
+      console.log('User points:' , result.user.loyaltyPoints);
        router.push('/home');
       
       // Redirect based on role

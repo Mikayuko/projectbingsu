@@ -4,7 +4,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { api, isAdmin } from '@/utils/api';
+import { api, isAdmin, getCurrentUser } from '@/utils/api';
 import { useRouter } from 'next/router';
 
 interface MenuData {
@@ -25,6 +25,14 @@ interface Stats {
 export default function DataManagementPage() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<'menu' | 'users' | 'stats'>('menu');
+  const [users, setUsers] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [editingUser, setEditingUser] = useState<any>(null);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filterRole, setFilterRole] = useState<string>('');
+  const [filterStatus, setFilterStatus] = useState<string>('');
+  
   const [menuData, setMenuData] = useState<MenuData>({
     flavors: [
       { name: 'Strawberry', price: 60, active: true },
@@ -58,9 +66,6 @@ export default function DataManagementPage() {
     activeCodes: 0
   });
 
-  const [users, setUsers] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-
   useEffect(() => {
     if (!isAdmin()) {
       router.push('/login');
@@ -68,24 +73,26 @@ export default function DataManagementPage() {
     }
     
     fetchData();
-  }, [activeTab]);
+  }, [activeTab, filterRole, filterStatus]);
 
   const fetchData = async () => {
     setLoading(true);
     try {
       if (activeTab === 'stats') {
-        // Fetch statistics
         const orderStats = await api.getOrderStats();
-        const reviewStats = await api.getReviews(1, 1); // Just to get stats
+        const reviewStats = await api.getReviews(1, 1);
+        const usersData = await api.getAllUsers();
         
         setStats({
-          totalUsers: 5, // Mock data
+          totalUsers: usersData.users?.length || 0,
           totalOrders: orderStats.todayOrders || 0,
           totalRevenue: orderStats.todayRevenue || 0,
           totalReviews: reviewStats.totalReviews || 0,
           averageRating: reviewStats.stats?.average || 0,
-          activeCodes: 10 // Mock data
+          activeCodes: 10
         });
+      } else if (activeTab === 'users') {
+        await loadAllUsers();
       }
     } catch (error) {
       console.error('Failed to fetch data:', error);
@@ -94,17 +101,97 @@ export default function DataManagementPage() {
     }
   };
 
+  const loadAllUsers = async () => {
+    try {
+      const filters: any = {};
+      if (filterRole) filters.role = filterRole;
+      if (filterStatus) filters.isActive = filterStatus;
+      if (searchTerm) filters.search = searchTerm;
+      
+      const result = await api.getAllUsers(filters);
+      setUsers(result.users || []);
+    } catch (error) {
+      console.error('Failed to load users:', error);
+      setUsers([]);
+    }
+  };
+
+  const handleSearch = () => {
+    loadAllUsers();
+  };
+
   const updateMenuPrice = (type: 'flavors' | 'toppings', index: number, newPrice: number) => {
     const updated = { ...menuData };
     updated[type][index].price = newPrice;
     setMenuData(updated);
-    // In real app, this would save to backend
   };
 
   const toggleItemActive = (type: 'flavors' | 'toppings', index: number) => {
     const updated = { ...menuData };
     updated[type][index].active = !updated[type][index].active;
     setMenuData(updated);
+  };
+
+  const handleEditUser = (user: any) => {
+    setEditingUser({ ...user });
+    setShowEditModal(true);
+  };
+
+  const handleSaveUser = async () => {
+    try {
+      setLoading(true);
+      
+      const updates = {
+        fullName: editingUser.fullName,
+        email: editingUser.email,
+        role: editingUser.role,
+        loyaltyPoints: editingUser.loyaltyPoints,
+        loyaltyCard: editingUser.loyaltyCard,
+        isActive: editingUser.isActive
+      };
+      
+      await api.updateUser(editingUser._id || editingUser.id, updates);
+      
+      await loadAllUsers();
+      setShowEditModal(false);
+      setEditingUser(null);
+      alert('User updated successfully!');
+    } catch (error: any) {
+      console.error('Failed to update user:', error);
+      alert(error.message || 'Failed to update user');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteUser = async (userId: string) => {
+    if (confirm('Are you sure you want to delete this user? This action cannot be undone.')) {
+      try {
+        setLoading(true);
+        await api.deleteUser(userId);
+        await loadAllUsers();
+        alert('User deleted successfully!');
+      } catch (error: any) {
+        console.error('Failed to delete user:', error);
+        alert(error.message || 'Failed to delete user');
+      } finally {
+        setLoading(false);
+      }
+    }
+  };
+
+  const handleToggleUserStatus = async (userId: string) => {
+    try {
+      setLoading(true);
+      const result = await api.toggleUserStatus(userId);
+      await loadAllUsers();
+      alert(result.message);
+    } catch (error: any) {
+      console.error('Failed to toggle user status:', error);
+      alert(error.message || 'Failed to update user status');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const exportData = (type: string) => {
@@ -118,6 +205,81 @@ export default function DataManagementPage() {
     linkElement.setAttribute('href', dataUri);
     linkElement.setAttribute('download', exportFileDefaultName);
     linkElement.click();
+  };
+
+  const generatePDFReport = async () => {
+    try {
+      // Dynamic imports
+      const jsPDF = (await import('jspdf')).default;
+      const autoTable = (await import('jspdf-autotable')).default;
+      
+      const doc = new jsPDF();
+      
+      // Title
+      doc.setFontSize(20);
+      doc.text('Bingsu Statistics Report', 14, 20);
+      
+      // Date
+      doc.setFontSize(10);
+      doc.text(`Generated: ${new Date().toLocaleString()}`, 14, 30);
+      
+      // Summary Statistics
+      doc.setFontSize(14);
+      doc.text('Summary Statistics', 14, 45);
+      
+      const summaryData = [
+        ['Total Users', stats.totalUsers.toString()],
+        ['Total Orders Today', stats.totalOrders.toString()],
+        ["Today's Revenue", `${stats.totalRevenue} Baht`],
+        ['Total Reviews', stats.totalReviews.toString()],
+        ['Average Rating', `${stats.averageRating.toFixed(1)} Stars`],
+        ['Active Menu Codes', stats.activeCodes.toString()]
+      ];
+      
+      autoTable(doc, {
+        startY: 50,
+        head: [['Metric', 'Value']],
+        body: summaryData,
+        theme: 'grid',
+        headStyles: { fillColor: [105, 128, 108] },
+        margin: { left: 14 }
+      });
+      
+      // Users Overview (if available)
+      if (users.length > 0) {
+        doc.addPage();
+        doc.setFontSize(14);
+        doc.text('Users Overview', 14, 20);
+        
+        const usersData = users.slice(0, 20).map(user => [
+          user.fullName || '',
+          user.email || '',
+          user.role || '',
+          (user.orderCount || 0).toString(),
+          (user.loyaltyPoints || 0).toString(),
+          user.isActive !== false ? 'Active' : 'Inactive'
+        ]);
+        
+        autoTable(doc, {
+          startY: 25,
+          head: [['Name', 'Email', 'Role', 'Orders', 'Points', 'Status']],
+          body: usersData,
+          theme: 'striped',
+          headStyles: { fillColor: [105, 128, 108] },
+          margin: { left: 14 },
+          styles: { fontSize: 8 }
+        });
+      }
+      
+      // Save PDF
+      const filename = `bingsu_report_${new Date().toISOString().split('T')[0]}.pdf`;
+      doc.save(filename);
+      
+      alert('PDF report generated successfully!');
+    } catch (error) {
+      console.error('Failed to generate PDF:', error);
+      alert('Failed to generate PDF: ' + (error as Error).message);
+    }
   };
 
   return (
@@ -302,46 +464,148 @@ export default function DataManagementPage() {
         {/* User Management Tab */}
         {activeTab === 'users' && (
           <div className="bg-white rounded-xl shadow-lg p-6">
-            <h3 className="text-2xl text-[#69806C] font-['Iceland'] mb-4">User Management</h3>
-            
-            <div className="space-y-4">
-              {/* Mock user data */}
-              {[
-                { id: 1, name: 'Test Customer', email: 'user@bingsu.com', role: 'customer', orders: 5, points: 50 },
-                { id: 2, name: 'Alice Johnson', email: 'alice@example.com', role: 'customer', orders: 8, points: 80 },
-                { id: 3, name: 'Admin User', email: 'admin@bingsu.com', role: 'admin', orders: 0, points: 0 },
-              ].map((user) => (
-                <div key={user.id} className="border rounded-lg p-4 flex justify-between items-center">
-                  <div>
-                    <p className="font-['Iceland'] text-lg font-bold">{user.name}</p>
-                    <p className="text-sm text-gray-600 font-['Iceland']">{user.email}</p>
-                    <div className="flex gap-4 mt-2">
-                      <span className="text-sm font-['Iceland']">Orders: {user.orders}</span>
-                      <span className="text-sm font-['Iceland']">Points: {user.points}</span>
-                    </div>
-                  </div>
-                  <div className="flex gap-2">
-                    <span className={`px-3 py-1 rounded text-sm font-['Iceland'] ${
-                      user.role === 'admin' 
-                        ? 'bg-purple-100 text-purple-700' 
-                        : 'bg-blue-100 text-blue-700'
-                    }`}>
-                      {user.role}
-                    </span>
-                    <button className="px-3 py-1 bg-gray-200 text-gray-700 rounded text-sm font-['Iceland'] hover:bg-gray-300">
-                      Edit
-                    </button>
-                  </div>
-                </div>
-              ))}
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-2xl text-[#69806C] font-['Iceland']">User Management</h3>
+              <div className="text-sm text-gray-600 font-['Iceland']">
+                Total Users: {users.length}
+              </div>
             </div>
+
+            {/* Search and Filters */}
+            <div className="mb-6 flex flex-wrap gap-4">
+              <div className="flex-1 min-w-[200px]">
+                <input
+                  type="text"
+                  placeholder="Search by name or email..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
+                  className="w-full p-2 border border-gray-300 rounded font-['Iceland']"
+                />
+              </div>
+              <select
+                value={filterRole}
+                onChange={(e) => setFilterRole(e.target.value)}
+                className="p-2 border border-gray-300 rounded font-['Iceland']"
+              >
+                <option value="">All Roles</option>
+                <option value="customer">Customer</option>
+                <option value="admin">Admin</option>
+              </select>
+              <select
+                value={filterStatus}
+                onChange={(e) => setFilterStatus(e.target.value)}
+                className="p-2 border border-gray-300 rounded font-['Iceland']"
+              >
+                <option value="">All Status</option>
+                <option value="true">Active</option>
+                <option value="false">Inactive</option>
+              </select>
+              <button
+                onClick={handleSearch}
+                className="px-6 py-2 bg-[#69806C] text-white rounded font-['Iceland'] hover:bg-[#5a6e5e]"
+              >
+                Search
+              </button>
+            </div>
+            
+            {loading ? (
+              <div className="text-center py-8">
+                <p className="text-gray-500 font-['Iceland']">Loading users...</p>
+              </div>
+            ) : users.length === 0 ? (
+              <div className="text-center py-12">
+                <div className="text-6xl mb-4">👥</div>
+                <p className="text-gray-500 font-['Iceland'] text-lg">No users found</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b-2 border-[#69806C]">
+                      <th className="text-left py-3 px-4 font-['Iceland'] text-gray-700">Name</th>
+                      <th className="text-left py-3 px-4 font-['Iceland'] text-gray-700">Email</th>
+                      <th className="text-center py-3 px-4 font-['Iceland'] text-gray-700">Role</th>
+                      <th className="text-center py-3 px-4 font-['Iceland'] text-gray-700">Orders</th>
+                      <th className="text-center py-3 px-4 font-['Iceland'] text-gray-700">Points</th>
+                      <th className="text-center py-3 px-4 font-['Iceland'] text-gray-700">Status</th>
+                      <th className="text-center py-3 px-4 font-['Iceland'] text-gray-700">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {users.map((user) => (
+                      <tr key={user._id || user.id} className="border-b hover:bg-gray-50">
+                        <td className="py-3 px-4">
+                          <p className="font-['Iceland'] text-lg font-bold">{user.fullName}</p>
+                        </td>
+                        <td className="py-3 px-4">
+                          <p className="text-sm text-gray-600 font-['Iceland']">{user.email}</p>
+                        </td>
+                        <td className="py-3 px-4 text-center">
+                          <span className={`px-3 py-1 rounded-full text-sm font-['Iceland'] font-bold ${
+                            user.role === 'admin' 
+                              ? 'bg-purple-100 text-purple-700' 
+                              : 'bg-blue-100 text-blue-700'
+                          }`}>
+                            {user.role}
+                          </span>
+                        </td>
+                        <td className="py-3 px-4 text-center font-['Iceland']">
+                          {user.orderCount || 0}
+                        </td>
+                        <td className="py-3 px-4 text-center font-['Iceland'] font-bold">
+                          {user.loyaltyPoints || 0}
+                        </td>
+                        <td className="py-3 px-4 text-center">
+                          <span className={`px-3 py-1 rounded-full text-sm font-['Iceland'] ${
+                            user.isActive !== false
+                              ? 'bg-green-100 text-green-700'
+                              : 'bg-red-100 text-red-700'
+                          }`}>
+                            {user.isActive !== false ? 'Active' : 'Inactive'}
+                          </span>
+                        </td>
+                        <td className="py-3 px-4">
+                          <div className="flex gap-2 justify-center">
+                            <button
+                              onClick={() => handleEditUser(user)}
+                              disabled={loading}
+                              className="px-3 py-1 bg-blue-500 text-white rounded text-sm font-['Iceland'] hover:bg-blue-600 disabled:opacity-50"
+                            >
+                              Edit
+                            </button>
+                            <button
+                              onClick={() => handleToggleUserStatus(user._id || user.id)}
+                              disabled={loading}
+                              className={`px-3 py-1 rounded text-sm font-['Iceland'] disabled:opacity-50 ${
+                                user.isActive !== false
+                                  ? 'bg-orange-500 text-white hover:bg-orange-600'
+                                  : 'bg-green-500 text-white hover:bg-green-600'
+                              }`}
+                            >
+                              {user.isActive !== false ? 'Deactivate' : 'Activate'}
+                            </button>
+                            <button
+                              onClick={() => handleDeleteUser(user._id || user.id)}
+                              disabled={loading}
+                              className="px-3 py-1 bg-red-500 text-white rounded text-sm font-['Iceland'] hover:bg-red-600 disabled:opacity-50"
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         )}
 
         {/* Statistics Tab */}
         {activeTab === 'stats' && (
           <div className="space-y-6">
-            {/* Stats Cards */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div className="bg-white rounded-xl shadow-lg p-6">
                 <h4 className="text-gray-600 font-['Iceland'] mb-2">Total Users</h4>
@@ -369,7 +633,6 @@ export default function DataManagementPage() {
               </div>
             </div>
 
-            {/* Export Button */}
             <div className="bg-white rounded-xl shadow-lg p-6 text-center">
               <h4 className="text-xl text-[#69806C] font-['Iceland'] mb-4">Export Reports</h4>
               <div className="flex gap-4 justify-center">
@@ -380,7 +643,7 @@ export default function DataManagementPage() {
                   Export Statistics
                 </button>
                 <button
-                  onClick={() => alert('Generating PDF report...')}
+                  onClick={generatePDFReport}
                   className="px-6 py-3 bg-green-500 text-white rounded-lg font-['Iceland'] hover:bg-green-600"
                 >
                   Generate PDF Report
@@ -390,6 +653,119 @@ export default function DataManagementPage() {
           </div>
         )}
       </div>
+
+      {/* Edit User Modal */}
+      {showEditModal && editingUser && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl p-8 max-w-md w-full max-h-[90vh] overflow-y-auto">
+            <h3 className="text-2xl text-[#69806C] font-['Iceland'] mb-6">Edit User</h3>
+            
+            <div className="space-y-4">
+              <div>
+                <label className="block text-gray-700 font-['Iceland'] mb-2">Full Name</label>
+                <input
+                  type="text"
+                  value={editingUser.fullName}
+                  onChange={(e) => setEditingUser({ ...editingUser, fullName: e.target.value })}
+                  className="w-full p-3 border border-gray-300 rounded-lg font-['Iceland']"
+                />
+              </div>
+
+              <div>
+                <label className="block text-gray-700 font-['Iceland'] mb-2">Email</label>
+                <input
+                  type="email"
+                  value={editingUser.email}
+                  onChange={(e) => setEditingUser({ ...editingUser, email: e.target.value })}
+                  className="w-full p-3 border border-gray-300 rounded-lg font-['Iceland']"
+                />
+              </div>
+
+              <div>
+                <label className="block text-gray-700 font-['Iceland'] mb-2">Role</label>
+                <select
+                  value={editingUser.role}
+                  onChange={(e) => setEditingUser({ ...editingUser, role: e.target.value })}
+                  className="w-full p-3 border border-gray-300 rounded-lg font-['Iceland']"
+                >
+                  <option value="customer">Customer</option>
+                  <option value="admin">Admin</option>
+                </select>
+                <p className="text-sm text-gray-500 font-['Iceland'] mt-1">
+                  ⚠️ Changing to Admin gives full system access
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-gray-700 font-['Iceland'] mb-2">Loyalty Points</label>
+                <input
+                  type="number"
+                  value={editingUser.loyaltyPoints || 0}
+                  onChange={(e) => setEditingUser({ ...editingUser, loyaltyPoints: parseInt(e.target.value) || 0 })}
+                  className="w-full p-3 border border-gray-300 rounded-lg font-['Iceland']"
+                  min="0"
+                />
+              </div>
+
+              <div>
+                <label className="block text-gray-700 font-['Iceland'] mb-2">Loyalty Stamps (0-9)</label>
+                <input
+                  type="number"
+                  value={editingUser.loyaltyCard?.stamps || 0}
+                  onChange={(e) => setEditingUser({ 
+                    ...editingUser, 
+                    loyaltyCard: { 
+                      ...editingUser.loyaltyCard, 
+                      stamps: Math.min(parseInt(e.target.value) || 0, 9) 
+                    } 
+                  })}
+                  className="w-full p-3 border border-gray-300 rounded-lg font-['Iceland']"
+                  min="0"
+                  max="9"
+                />
+                <p className="text-sm text-gray-500 font-['Iceland'] mt-1">
+                  9 stamps = 1 free drink
+                </p>
+              </div>
+
+              <div>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={editingUser.isActive !== false}
+                    onChange={(e) => setEditingUser({ ...editingUser, isActive: e.target.checked })}
+                    className="w-4 h-4"
+                  />
+                  <span className="text-gray-700 font-['Iceland']">Active Account</span>
+                </label>
+                <p className="text-sm text-gray-500 font-['Iceland'] mt-1 ml-6">
+                  Inactive users cannot login
+                </p>
+              </div>
+            </div>
+
+            <div className="flex gap-4 mt-6">
+              <button
+                onClick={() => {
+                  setShowEditModal(false);
+                  setEditingUser(null);
+                }}
+                disabled={loading}
+                className="flex-1 px-4 py-3 bg-gray-200 text-gray-700 rounded-lg font-['Iceland'] hover:bg-gray-300 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveUser}
+                disabled={loading}
+                className="flex-1 px-4 py-3 bg-[#69806C] text-white rounded-lg font-['Iceland'] hover:bg-[#5a6e5e] disabled:opacity-50"
+              >
+                {loading ? 'Saving...' : 'Save Changes'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

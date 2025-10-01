@@ -58,6 +58,10 @@ const handleApiError = async (response: Response) => {
       const errorData = await response.json();
       throw new Error(errorData.message || `HTTP ${response.status}: ${response.statusText}`);
     } catch (e) {
+      // If JSON parsing fails or any other error
+      if (e instanceof Error && e.message.includes('HTTP')) {
+        throw e; // Re-throw if it's already an HTTP error
+      }
       throw new Error(`HTTP ${response.status}: ${response.statusText}`);
     }
   }
@@ -68,7 +72,7 @@ const handleApiError = async (response: Response) => {
 const isApiAvailable = async () => {
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 2000); // 2 second timeout
+    const timeoutId = setTimeout(() => controller.abort(), 2000);
     
     const response = await fetch(`${API_BASE_URL}/health`, {
       signal: controller.signal,
@@ -86,107 +90,51 @@ const isApiAvailable = async () => {
 class BingsuAPI {
   // Auth endpoints
   async register(data: { fullName: string; email: string; password: string; confirmPassword: string }) {
-    try {
-      const response = await fetch(`${API_BASE_URL}/auth/register`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data)
-      });
-      
-      await handleApiError(response);
-      const result = await response.json();
-      
-      // Store token
-      if (result.token) {
-        localStorage.setItem('token', result.token);
-        localStorage.setItem('user', JSON.stringify(result.user));
-      }
-      
-      return result;
-    } catch (error) {
-      console.error('Registration error:', error);
-      
-      // Fallback to local registration
-      if (data.email && data.password && data.fullName) {
-        const mockUser = {
-          id: Date.now().toString(),
-          fullName: data.fullName,
-          email: data.email,
-          role: data.email.includes('admin') ? 'admin' : 'customer',
-          loyaltyPoints: 0,
-          loyaltyCard: { stamps: 0, totalFreeDrinks: 0 }
-        };
-        
-        const mockToken = btoa(JSON.stringify({ userId: mockUser.id, email: mockUser.email }));
-        
-        localStorage.setItem('token', mockToken);
-        localStorage.setItem('user', JSON.stringify(mockUser));
-        
-        return { token: mockToken, user: mockUser };
-      }
-      
-      throw error;
+    const response = await fetch(`${API_BASE_URL}/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+    
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.message || 'Registration failed');
     }
+    
+    const result = await response.json();
+    
+    if (result.token) {
+      localStorage.setItem('token', result.token);
+      localStorage.setItem('user', JSON.stringify(result.user));
+    }
+    
+    return result;
   }
 
   async login(email: string, password: string) {
-    try {
-      const response = await fetch(`${API_BASE_URL}/auth/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password })
-      });
-      
-      await handleApiError(response);
-      const result = await response.json();
-      
-      // Store token and user
-      if (result.token) {
-        localStorage.setItem('token', result.token);
-        localStorage.setItem('user', JSON.stringify(result.user));
-      }
-      
-      return result;
-    } catch (error) {
-      console.error('Login error:', error);
-      
-      // Fallback to demo account validation
-      const demoAccounts = [
-        { email: 'admin@bingsu.com', password: 'admin123', role: 'admin', name: 'Admin User' },
-        { email: 'user@bingsu.com', password: 'user123', role: 'customer', name: 'Test Customer' },
-        { email: 'alice@example.com', password: 'alice123', role: 'customer', name: 'Alice Johnson' }
-      ];
-      
-      const account = demoAccounts.find(acc => acc.email === email && acc.password === password);
-      
-      if (account) {
-        const mockUser = {
-          id: Date.now().toString(),
-          fullName: account.name,
-          email: account.email,
-          role: account.role as 'customer' | 'admin',
-          loyaltyPoints: Math.floor(Math.random() * 100),
-          loyaltyCard: { 
-            stamps: Math.floor(Math.random() * 9), 
-            totalFreeDrinks: Math.floor(Math.random() * 3) 
-          }
-        };
-        
-        const mockToken = btoa(JSON.stringify({ userId: mockUser.id, email: mockUser.email }));
-        
-        localStorage.setItem('token', mockToken);
-        localStorage.setItem('user', JSON.stringify(mockUser));
-        
-        return { token: mockToken, user: mockUser };
-      }
-      
-      throw error;
+    const response = await fetch(`${API_BASE_URL}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password })
+    });
+    
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.message || 'Login failed');
     }
+    
+    const result = await response.json();
+    
+    if (result.token) {
+      localStorage.setItem('token', result.token);
+      localStorage.setItem('user', JSON.stringify(result.user));
+    }
+    
+    return result;
   }
 
   async logout() {
     try {
-      // Try API logout first
       await fetch(`${API_BASE_URL}/auth/logout`, {
         method: 'POST',
         headers: getAuthHeaders()
@@ -194,7 +142,6 @@ class BingsuAPI {
     } catch (error) {
       console.log('API logout failed, using local logout');
     } finally {
-      // Always clear local storage
       localStorage.removeItem('token');
       localStorage.removeItem('user');
     }
@@ -209,13 +156,80 @@ class BingsuAPI {
       if (!response.ok) throw new Error('Failed to fetch profile');
       return response.json();
     } catch (error) {
-      // Fallback to local user data
       const user = getCurrentUser();
       if (user) {
         return { user };
       }
       throw error;
     }
+  }
+
+  // User Management endpoints
+  async getAllUsers(filters?: { role?: string; isActive?: string; search?: string }) {
+    const params = new URLSearchParams(filters as any);
+    const response = await fetch(`${API_BASE_URL}/users/admin/all?${params}`, {
+      headers: getAuthHeaders()
+    });
+    
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.message || 'Failed to fetch users');
+    }
+    
+    return response.json();
+  }
+
+  async updateUser(userId: string, updates: {
+    fullName?: string;
+    email?: string;
+    role?: string;
+    loyaltyPoints?: number;
+    loyaltyCard?: any;
+    isActive?: boolean;
+  }) {
+    const response = await fetch(`${API_BASE_URL}/users/admin/${userId}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        ...getAuthHeaders()
+      },
+      body: JSON.stringify(updates)
+    });
+    
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.message || 'Failed to update user');
+    }
+    
+    return response.json();
+  }
+
+  async deleteUser(userId: string) {
+    const response = await fetch(`${API_BASE_URL}/users/admin/${userId}`, {
+      method: 'DELETE',
+      headers: getAuthHeaders()
+    });
+    
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.message || 'Failed to delete user');
+    }
+    
+    return response.json();
+  }
+
+  async toggleUserStatus(userId: string) {
+    const response = await fetch(`${API_BASE_URL}/users/admin/${userId}/toggle-status`, {
+      method: 'POST',
+      headers: getAuthHeaders()
+    });
+    
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.message || 'Failed to toggle user status');
+    }
+    
+    return response.json();
   }
 
   // Menu code endpoints
@@ -234,7 +248,6 @@ class BingsuAPI {
       if (!response.ok) throw new Error(result.message);
       return result;
     } catch (error) {
-      // Generate local code
       const code = Array.from({ length: 5 }, () => 
         'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'[Math.floor(Math.random() * 36)]
       ).join('');
@@ -255,17 +268,11 @@ class BingsuAPI {
       if (!response.ok) throw new Error(result.message);
       return result;
     } catch (error) {
-      console.log('API not available, checking local codes...');
-      
-      // Check generated codes first (from create-code page)
       const codeMap = JSON.parse(localStorage.getItem('menuCodeMap') || '{}');
       if (codeMap[code.toUpperCase()]) {
-        const cupSize = codeMap[code.toUpperCase()];
-        console.log('Found generated code:', code, 'with size:', cupSize);
-        return { valid: true, cupSize, message: 'Code is valid' };
+        return { valid: true, cupSize: codeMap[code.toUpperCase()], message: 'Code is valid' };
       }
       
-      // Fallback to predefined demo codes
       const validCodes: { [key: string]: string } = {
         'TEST1': 'S', 'TEST2': 'M', 'TEST3': 'L',
         'DEMO1': 'S', 'DEMO2': 'M', 'DEMO3': 'L',
@@ -274,11 +281,9 @@ class BingsuAPI {
       
       const cupSize = validCodes[code.toUpperCase()];
       if (cupSize) {
-        console.log('Found demo code:', code, 'with size:', cupSize);
         return { valid: true, cupSize, message: 'Code is valid' };
       }
       
-      console.log('Code not found:', code);
       throw new Error('Invalid menu code');
     }
   }
@@ -304,8 +309,7 @@ class BingsuAPI {
       if (!response.ok) throw new Error(result.message);
       return result;
     } catch (error) {
-      console.log('API unavailable, creating local order');
-      throw error; // Let the calling function handle local creation
+      throw error;
     }
   }
 
@@ -317,7 +321,6 @@ class BingsuAPI {
       if (!response.ok) throw new Error(result.message);
       return result;
     } catch (error) {
-      // Check localStorage for order
       const orders = JSON.parse(localStorage.getItem('bingsuOrders') || '[]');
       const order = orders.find((o: any) => o.customerCode.toLowerCase() === customerCode.toLowerCase());
       
@@ -338,13 +341,11 @@ class BingsuAPI {
       if (!response.ok) throw new Error('Failed to fetch orders');
       return response.json();
     } catch (error) {
-      // Fallback to localStorage
       const orders = JSON.parse(localStorage.getItem('bingsuOrders') || '[]');
       return { orders };
     }
   }
 
-  // Admin order endpoints
   async getAllOrders(filters?: { status?: string; date?: string }) {
     try {
       const params = new URLSearchParams(filters as any);
@@ -355,7 +356,6 @@ class BingsuAPI {
       if (!response.ok) throw new Error('Failed to fetch orders');
       return response.json();
     } catch (error) {
-      // Fallback to localStorage
       const orders = JSON.parse(localStorage.getItem('bingsuOrders') || '[]');
       return { orders };
     }
@@ -376,7 +376,7 @@ class BingsuAPI {
       if (!response.ok) throw new Error(result.message);
       return result;
     } catch (error) {
-      throw error; // Let caller handle local update
+      throw error;
     }
   }
 
@@ -389,7 +389,6 @@ class BingsuAPI {
       if (!response.ok) throw new Error('Failed to fetch stats');
       return response.json();
     } catch (error) {
-      // Generate local stats
       const orders = JSON.parse(localStorage.getItem('bingsuOrders') || '[]');
       const today = new Date().toDateString();
       const todayOrders = orders.filter((o: any) => new Date(o.createdAt).toDateString() === today);
@@ -425,7 +424,6 @@ class BingsuAPI {
       if (!response.ok) throw new Error(result.message);
       return result;
     } catch (error) {
-      // Create local review
       const review = {
         _id: Date.now().toString(),
         customerName: getCurrentUser()?.fullName || 'Anonymous',
@@ -450,7 +448,6 @@ class BingsuAPI {
       if (!response.ok) throw new Error('Failed to fetch reviews');
       return response.json();
     } catch (error) {
-      // Return local reviews + default reviews
       const localReviews = JSON.parse(localStorage.getItem('bingsuReviews') || '[]');
       const defaultReviews = [
         {
@@ -518,7 +515,6 @@ class BingsuAPI {
       if (!response.ok) throw new Error(result.message);
       return result;
     } catch (error) {
-      // Local vote handling could be implemented here
       throw error;
     }
   }
@@ -543,7 +539,6 @@ export const isAdmin = () => {
   return user?.role === 'admin';
 };
 
-// Helper function to check if we're running in offline/demo mode
 export const isOfflineMode = async () => {
   return !(await isApiAvailable());
 };
