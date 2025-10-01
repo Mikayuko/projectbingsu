@@ -10,15 +10,20 @@ router.post('/generate', authenticate, isAdmin, [
   body('cupSize').isIn(['S', 'M', 'L']).withMessage('Invalid cup size')
 ], async (req, res) => {
   try {
+    console.log('🎫 Generating menu code for size:', req.body.cupSize);
+    
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
+      console.log('❌ Validation errors:', errors.array());
       return res.status(400).json({ errors: errors.array() });
     }
     
     const { cupSize } = req.body;
     
-    // Create new menu code
+    // Create new menu code using static method
     const menuCode = await MenuCode.createCode(cupSize, req.user._id);
+    
+    console.log('✅ Menu code generated:', menuCode.code);
     
     res.status(201).json({
       message: 'Menu code generated successfully',
@@ -27,8 +32,11 @@ router.post('/generate', authenticate, isAdmin, [
       expiresAt: menuCode.expiresAt
     });
   } catch (error) {
-    console.error('Menu code generation error:', error);
-    res.status(500).json({ message: 'Failed to generate menu code' });
+    console.error('❌ Menu code generation error:', error);
+    res.status(500).json({ 
+      message: 'Failed to generate menu code',
+      error: error.message 
+    });
   }
 });
 
@@ -38,25 +46,42 @@ router.post('/validate', [
 ], async (req, res) => {
   try {
     const { code } = req.body;
+    console.log('🔍 Validating menu code:', code);
     
+    // Find the code (case insensitive)
     const menuCode = await MenuCode.findOne({
-      code: code.toUpperCase(),
-      isUsed: false
+      code: code.toUpperCase()
     });
     
+    console.log('📋 Code lookup result:', menuCode ? 'Found' : 'Not found');
+    
     if (!menuCode) {
+      console.log('❌ Code not found in database');
       return res.status(400).json({ 
         valid: false,
         message: 'Invalid or already used code' 
       });
     }
     
+    // Check if already used
+    if (menuCode.isUsed) {
+      console.log('❌ Code already used');
+      return res.status(400).json({ 
+        valid: false,
+        message: 'This code has already been used' 
+      });
+    }
+    
+    // Check if expired
     if (menuCode.expiresAt < new Date()) {
+      console.log('❌ Code expired');
       return res.status(400).json({ 
         valid: false,
         message: 'Code has expired' 
       });
     }
+    
+    console.log('✅ Code is valid. Cup size:', menuCode.cupSize);
     
     res.json({
       valid: true,
@@ -64,13 +89,19 @@ router.post('/validate', [
       message: 'Code is valid'
     });
   } catch (error) {
-    res.status(500).json({ message: 'Failed to validate code' });
+    console.error('❌ Validation error:', error);
+    res.status(500).json({ 
+      message: 'Failed to validate code',
+      error: error.message 
+    });
   }
 });
 
 // GET /api/menu-codes/admin/all (Admin only)
 router.get('/admin/all', authenticate, isAdmin, async (req, res) => {
   try {
+    console.log('📋 Admin fetching all menu codes');
+    
     const { status, cupSize } = req.query;
     const filter = {};
     
@@ -91,31 +122,45 @@ router.get('/admin/all', authenticate, isAdmin, async (req, res) => {
       .populate('createdBy', 'fullName')
       .populate('usedBy.order')
       .sort('-createdAt')
-      .limit(100); // Limit to prevent too large response
+      .limit(100);
     
+    console.log(`✅ Found ${codes.length} codes`);
     res.json({ codes });
   } catch (error) {
-    res.status(500).json({ message: 'Failed to fetch menu codes' });
+    console.error('❌ Error fetching codes:', error);
+    res.status(500).json({ 
+      message: 'Failed to fetch menu codes',
+      error: error.message 
+    });
   }
 });
 
 // DELETE /api/menu-codes/admin/cleanup (Admin only)
 router.delete('/admin/cleanup', authenticate, isAdmin, async (req, res) => {
   try {
+    console.log('🧹 Cleaning up expired codes');
+    
     const deletedCount = await MenuCode.cleanupExpired();
     
+    console.log(`✅ Deleted ${deletedCount} expired codes`);
     res.json({
       message: `Cleaned up ${deletedCount} expired codes`,
       deletedCount
     });
   } catch (error) {
-    res.status(500).json({ message: 'Failed to cleanup codes' });
+    console.error('❌ Cleanup error:', error);
+    res.status(500).json({ 
+      message: 'Failed to cleanup codes',
+      error: error.message 
+    });
   }
 });
 
 // GET /api/menu-codes/admin/stats (Admin only)
 router.get('/admin/stats', authenticate, isAdmin, async (req, res) => {
   try {
+    console.log('📊 Fetching menu code statistics');
+    
     const stats = await MenuCode.aggregate([
       {
         $facet: {
@@ -147,15 +192,22 @@ router.get('/admin/stats', authenticate, isAdmin, async (req, res) => {
       }
     ]);
     
-    res.json({
+    const result = {
       total: stats[0].total[0]?.count || 0,
       used: stats[0].used[0]?.count || 0,
       unused: stats[0].unused[0]?.count || 0,
       expired: stats[0].expired[0]?.count || 0,
       byCupSize: stats[0].byCupSize
-    });
+    };
+    
+    console.log('✅ Statistics:', result);
+    res.json(result);
   } catch (error) {
-    res.status(500).json({ message: 'Failed to fetch statistics' });
+    console.error('❌ Stats error:', error);
+    res.status(500).json({ 
+      message: 'Failed to fetch statistics',
+      error: error.message 
+    });
   }
 });
 

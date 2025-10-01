@@ -15,24 +15,64 @@ router.post('/create', optionalAuth, [
   body('specialInstructions').optional().isLength({ max: 200 })
 ], async (req, res) => {
   try {
+    console.log('📝 Creating order with data:', req.body);
+    
+    // Validate request
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      console.log('❌ Validation errors:', errors.array());
+      return res.status(400).json({ 
+        message: 'Validation failed',
+        errors: errors.array() 
+      });
+    }
+    
     const { menuCode, shavedIce, toppings, specialInstructions } = req.body;
     
-    // Validate menu code
-    const codeDoc = await MenuCode.findOne({ 
-      code: menuCode.toUpperCase(),
-      isUsed: false
-    });
+    // Validate menu code exists
+    let codeDoc;
+    try {
+      codeDoc = await MenuCode.findOne({ 
+        code: menuCode.toUpperCase()
+      });
+      
+      console.log('🔍 Menu code lookup result:', codeDoc);
+    } catch (dbError) {
+      console.error('❌ Database error looking up menu code:', dbError);
+      return res.status(500).json({ 
+        message: 'Database error',
+        error: dbError.message 
+      });
+    }
     
     if (!codeDoc) {
-      return res.status(400).json({ message: 'Invalid or already used menu code' });
+      console.log('❌ Menu code not found:', menuCode);
+      return res.status(400).json({ 
+        message: 'Invalid menu code. Please check the code or generate a new one.' 
+      });
     }
     
-    if (codeDoc.expiresAt < new Date()) {
-      return res.status(400).json({ message: 'Menu code has expired' });
+    // Check if code is already used
+    if (codeDoc.isUsed) {
+      console.log('❌ Menu code already used:', menuCode);
+      return res.status(400).json({ 
+        message: 'This menu code has already been used' 
+      });
     }
+    
+    // Check if expired
+    if (codeDoc.expiresAt < new Date()) {
+      console.log('❌ Menu code expired:', menuCode);
+      return res.status(400).json({ 
+        message: 'Menu code has expired' 
+      });
+    }
+    
+    console.log('✅ Menu code is valid:', menuCode);
     
     // Generate customer code
-    const customerCode = `#${Math.random().toString(36).substr(2, 5)}`;
+    const customerCode = `#${Math.random().toString(36).substr(2, 5).toUpperCase()}`;
+    console.log('🎫 Generated customer code:', customerCode);
     
     // Create order
     const order = new Order({
@@ -44,34 +84,65 @@ router.post('/create', optionalAuth, [
       toppings,
       specialInstructions,
       pricing: {
-        basePrice: 60, // Base price for bingsu
+        basePrice: 60,
       }
     });
     
     // Calculate total
     order.calculateTotal();
+    console.log('💰 Calculated total:', order.pricing.total);
     
     // Check if user gets free drink (9th stamp)
     let earnedFreeDrink = false;
     if (req.user) {
-      const user = await User.findById(req.user._id);
-      earnedFreeDrink = user.addLoyaltyStamp();
-      
-      if (earnedFreeDrink) {
-        order.isFreeDrink = true;
-        order.calculateTotal(); // Recalculate with free drink
+      try {
+        const user = await User.findById(req.user._id);
+        if (user) {
+          earnedFreeDrink = user.addLoyaltyStamp();
+          
+          if (earnedFreeDrink) {
+            order.isFreeDrink = true;
+            order.calculateTotal(); // Recalculate with free drink
+            console.log('🎉 User earned free drink!');
+          }
+          
+          // Add to order history
+          user.orderHistory.push(order._id);
+          user.loyaltyPoints += Math.floor(order.pricing.total / 10);
+          await user.save();
+          console.log('✅ User updated with loyalty points');
+        }
+      } catch (userError) {
+        console.error('⚠️ Error updating user, but continuing:', userError);
+        // Continue even if user update fails
       }
-      
-      // Add to order history
-      user.orderHistory.push(order._id);
-      user.loyaltyPoints += Math.floor(order.pricing.total / 10); // 1 point per 10 baht
-      await user.save();
     }
     
-    await order.save();
+    // Save order
+    try {
+      await order.save();
+      console.log('✅ Order saved successfully:', order.orderId);
+    } catch (saveError) {
+      console.error('❌ Error saving order:', saveError);
+      return res.status(500).json({ 
+        message: 'Failed to save order',
+        error: saveError.message 
+      });
+    }
     
     // Mark code as used
-    await MenuCode.validateAndUse(menuCode, order._id);
+    try {
+      codeDoc.isUsed = true;
+      codeDoc.usedBy = {
+        order: order._id,
+        usedAt: new Date()
+      };
+      await codeDoc.save();
+      console.log('✅ Menu code marked as used');
+    } catch (codeError) {
+      console.error('⚠️ Error marking code as used:', codeError);
+      // Continue even if code update fails
+    }
     
     res.status(201).json({
       message: 'Order created successfully',
@@ -79,39 +150,59 @@ router.post('/create', optionalAuth, [
       customerCode,
       earnedFreeDrink
     });
+    
   } catch (error) {
-    console.error('Order creation error:', error);
-    res.status(500).json({ message: 'Failed to create order', error: error.message });
+    console.error('❌ Unexpected error in order creation:', error);
+    res.status(500).json({ 
+      message: 'Failed to create order',
+      error: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
   }
 });
 
 // GET /api/orders/track/:customerCode
 router.get('/track/:customerCode', async (req, res) => {
   try {
+    console.log('🔍 Tracking order:', req.params.customerCode);
+    
     const order = await Order.findOne({ 
       customerCode: req.params.customerCode 
     });
     
     if (!order) {
+      console.log('❌ Order not found:', req.params.customerCode);
       return res.status(404).json({ message: 'Order not found' });
     }
     
+    console.log('✅ Order found:', order.orderId);
     res.json({ order });
   } catch (error) {
-    res.status(500).json({ message: 'Failed to track order' });
+    console.error('❌ Error tracking order:', error);
+    res.status(500).json({ 
+      message: 'Failed to track order',
+      error: error.message 
+    });
   }
 });
 
 // GET /api/orders/my-orders
 router.get('/my-orders', authenticate, async (req, res) => {
   try {
+    console.log('📋 Fetching orders for user:', req.user._id);
+    
     const orders = await Order.find({ 
       customerId: req.user._id 
     }).sort('-createdAt');
     
+    console.log(`✅ Found ${orders.length} orders`);
     res.json({ orders });
   } catch (error) {
-    res.status(500).json({ message: 'Failed to fetch orders' });
+    console.error('❌ Error fetching orders:', error);
+    res.status(500).json({ 
+      message: 'Failed to fetch orders',
+      error: error.message 
+    });
   }
 });
 
@@ -120,6 +211,8 @@ router.get('/my-orders', authenticate, async (req, res) => {
 // GET /api/orders/admin/all
 router.get('/admin/all', authenticate, isAdmin, async (req, res) => {
   try {
+    console.log('📋 Admin fetching all orders');
+    
     const { status, date } = req.query;
     const filter = {};
     
@@ -138,9 +231,14 @@ router.get('/admin/all', authenticate, isAdmin, async (req, res) => {
       .populate('customerId', 'fullName email')
       .sort('-createdAt');
     
+    console.log(`✅ Found ${orders.length} orders`);
     res.json({ orders });
   } catch (error) {
-    res.status(500).json({ message: 'Failed to fetch orders' });
+    console.error('❌ Error fetching orders:', error);
+    res.status(500).json({ 
+      message: 'Failed to fetch orders',
+      error: error.message 
+    });
   }
 });
 
@@ -149,27 +247,37 @@ router.put('/admin/:orderId/status', authenticate, isAdmin, [
   body('status').isIn(['Pending', 'Preparing', 'Ready', 'Completed', 'Cancelled'])
 ], async (req, res) => {
   try {
+    console.log('🔄 Updating order status:', req.params.orderId, '->', req.body.status);
+    
     const { status } = req.body;
     const order = await Order.findById(req.params.orderId);
     
     if (!order) {
+      console.log('❌ Order not found:', req.params.orderId);
       return res.status(404).json({ message: 'Order not found' });
     }
     
     await order.updateStatus(status);
+    console.log('✅ Order status updated');
     
     res.json({ 
       message: 'Order status updated',
       order 
     });
   } catch (error) {
-    res.status(500).json({ message: 'Failed to update order status' });
+    console.error('❌ Error updating order status:', error);
+    res.status(500).json({ 
+      message: 'Failed to update order status',
+      error: error.message 
+    });
   }
 });
 
 // GET /api/orders/admin/stats
 router.get('/admin/stats', authenticate, isAdmin, async (req, res) => {
   try {
+    console.log('📊 Fetching order statistics');
+    
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     
@@ -205,14 +313,21 @@ router.get('/admin/stats', authenticate, isAdmin, async (req, res) => {
       }
     ]);
     
-    res.json({
+    const result = {
       todayOrders: stats[0].todayOrders[0]?.count || 0,
       todayRevenue: stats[0].todayRevenue[0]?.total || 0,
       pendingOrders: stats[0].pendingOrders[0]?.count || 0,
       popularFlavors: stats[0].popularFlavors
-    });
+    };
+    
+    console.log('✅ Statistics calculated:', result);
+    res.json(result);
   } catch (error) {
-    res.status(500).json({ message: 'Failed to fetch statistics' });
+    console.error('❌ Error fetching statistics:', error);
+    res.status(500).json({ 
+      message: 'Failed to fetch statistics',
+      error: error.message 
+    });
   }
 });
 
