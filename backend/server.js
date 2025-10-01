@@ -16,11 +16,29 @@ const userRoutes = require('./routes/users');
 // Initialize express app
 const app = express();
 
-// Middleware
+// CORS Configuration - รองรับทั้ง Vercel และ localhost
+const allowedOrigins = [
+  'http://localhost:3000',
+  'https://projectbingsu.vercel.app/', // เปลี่ยนเป็น URL ของคุณบน Vercel
+  process.env.FRONTEND_URL
+].filter(Boolean);
+
 app.use(cors({
-  origin: 'http://localhost:3000', // Frontend URL
-  credentials: true
+  origin: function(origin, callback) {
+    // อนุญาตให้ requests ที่ไม่มี origin (เช่น Postman)
+    if (!origin) return callback(null, true);
+    
+    if (allowedOrigins.indexOf(origin) !== -1 || process.env.NODE_ENV === 'development') {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
 }));
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -40,7 +58,16 @@ app.get('/api/health', (req, res) => {
   res.json({ 
     status: 'OK', 
     message: 'Bingsu API is running',
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
+    environment: process.env.NODE_ENV || 'development'
+  });
+});
+
+// Root endpoint
+app.get('/', (req, res) => {
+  res.json({ 
+    message: 'Bingsu API Server',
+    version: '1.0.0'
   });
 });
 
