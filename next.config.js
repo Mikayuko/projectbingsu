@@ -14,6 +14,8 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
+
+  output: 'standalone',
   
   // เร่ง build speed
   swcMinify: true,
