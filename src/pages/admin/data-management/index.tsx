@@ -634,24 +634,14 @@ export default function DataManagementPage() {
               </div>
             </div>
 
-            <div className="bg-white rounded-xl shadow-lg p-6 text-center">
-              <h4 className="text-xl text-[#69806C] font-['Iceland'] mb-4">Export Reports</h4>
-              <div className="flex gap-4 justify-center">
-                <button
-                  onClick={() => exportData('stats')}
-                  className="px-6 py-3 bg-blue-500 text-white rounded-lg font-['Iceland'] hover:bg-blue-600"
-                >
-                  Export Statistics
-                </button>
-                <button
-                  onClick={generatePDFReport}
-                  className="px-6 py-3 bg-green-500 text-white rounded-lg font-['Iceland'] hover:bg-green-600"
-                >
-                  Generate PDF Report
-                </button>
+            
+              
+              
+                
+                
               </div>
-            </div>
-          </div>
+            
+          
         )}
       </div>
 
