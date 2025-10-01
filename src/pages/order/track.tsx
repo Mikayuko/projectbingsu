@@ -1,36 +1,21 @@
-// src/pages/order/track.tsx
+// src/pages/order/track.tsx - MongoDB Only
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import Link from 'next/link';
+import { api } from '@/utils/api';
 
 interface OrderData {
   _id?: string;
   orderId?: string;
   customerCode: string;
-  menuCode: string;
   cupSize: string;
-  shavedIce: {
-    flavor: string;
-    points: number;
-  };
-  toppings: Array<{
-    name: string;
-    points: number;
-  }>;
-  pricing: {
-    basePrice?: number;
-    total: number;
-  };
+  shavedIce: { flavor: string };
+  toppings: Array<{ name: string }>;
+  pricing: { total: number };
   status: string;
   specialInstructions?: string;
   createdAt: string;
-  timestamps?: {
-    ordered?: string;
-    preparing?: string;
-    ready?: string;
-    completed?: string;
-  };
 }
 
 export default function OrderTrackingPage() {
@@ -41,16 +26,6 @@ export default function OrderTrackingPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [autoRefresh, setAutoRefresh] = useState(true);
-  const [recentOrders, setRecentOrders] = useState<OrderData[]>([]);
-
-  // Check if router is ready
-  if (!router.isReady) {
-    return (
-      <div className="min-h-screen bg-[#EBE6DE] flex items-center justify-center">
-        <p className="text-2xl text-[#69806C] font-['Iceland']">Loading...</p>
-      </div>
-    );
-  }
 
   useEffect(() => {
     if (code) {
@@ -60,89 +35,31 @@ export default function OrderTrackingPage() {
   }, [code]);
 
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const orders = JSON.parse(localStorage.getItem('bingsuOrders') || '[]');
-      setRecentOrders(orders.slice(-3));
-    }
-  }, [order]);
-
-  useEffect(() => {
     if (order && autoRefresh && order.status !== 'Completed' && order.status !== 'Cancelled') {
       const interval = setInterval(() => {
-        updateOrderStatus();
+        trackOrder(customerCode, true);
       }, 10000);
-
       return () => clearInterval(interval);
     }
-  }, [order, autoRefresh]);
+  }, [order, autoRefresh, customerCode]);
 
-  const updateOrderStatus = () => {
-    if (!order || typeof window === 'undefined') return;
-    
-    const statusFlow = ['Pending', 'Preparing', 'Ready', 'Completed'];
-    const currentIndex = statusFlow.indexOf(order.status);
-    
-    if (currentIndex < statusFlow.length - 1) {
-      const newStatus = statusFlow[currentIndex + 1];
-      const updatedOrder = { ...order, status: newStatus };
-      
-      const orders = JSON.parse(localStorage.getItem('bingsuOrders') || '[]');
-      const orderIndex = orders.findIndex((o: OrderData) => o.customerCode === order.customerCode);
-      if (orderIndex !== -1) {
-        orders[orderIndex] = updatedOrder;
-        localStorage.setItem('bingsuOrders', JSON.stringify(orders));
-      }
-      
-      setOrder(updatedOrder);
-    }
-  };
-
-  const trackOrder = async (trackingCode: string) => {
+  const trackOrder = async (trackingCode: string, silent = false) => {
     if (!trackingCode) {
       setError('Please enter a customer code');
       return;
     }
 
-    setLoading(true);
+    if (!silent) setLoading(true);
     setError('');
 
     try {
-      if (typeof window !== 'undefined') {
-        const localOrders = JSON.parse(localStorage.getItem('bingsuOrders') || '[]');
-        const localOrder = localOrders.find((o: OrderData) => 
-          o.customerCode.toLowerCase() === trackingCode.toLowerCase()
-        );
-        
-        if (localOrder) {
-          if (!localOrder.orderId) {
-            localOrder.orderId = `ORD${Math.floor(Math.random() * 10000).toString().padStart(5, '0')}`;
-          }
-          setOrder(localOrder);
-          setError('');
-          setLoading(false);
-          return;
-        }
-      }
-
-      try {
-        const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
-        const response = await fetch(`${API_URL}/orders/track/${trackingCode}`);
-        if (response.ok) {
-          const result = await response.json();
-          setOrder(result.order);
-          setError('');
-        } else {
-          throw new Error('Order not found in database');
-        }
-      } catch (apiError) {
-        setError('Order not found. Please check your customer code.');
-        setOrder(null);
-      }
+      const result = await api.trackOrder(trackingCode);
+      setOrder(result.order);
     } catch (err: any) {
-      setError('Order not found. Please check your customer code.');
+      setError(err.message || 'Order not found');
       setOrder(null);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 
@@ -175,65 +92,15 @@ export default function OrderTrackingPage() {
     return icons[status as keyof typeof icons] || '❓';
   };
 
-  const getTimelineSteps = () => {
-    return ['Pending', 'Preparing', 'Ready', 'Completed'];
-  };
-
-  const getStepTime = (step: string): string | null => {
-    if (!order) return null;
-    
-    if (step === order.status) {
-      return new Date().toLocaleString('th-TH', {
-        hour: '2-digit',
-        minute: '2-digit',
-        day: '2-digit',
-        month: 'short'
-      });
-    }
-    
-    if (step === 'Pending' && order.createdAt) {
-      return new Date(order.createdAt).toLocaleString('th-TH', {
-        hour: '2-digit',
-        minute: '2-digit',
-        day: '2-digit',
-        month: 'short'
-      });
-    }
-    
-    return null;
-  };
-
-  const manualUpdateStatus = () => {
-    if (!order || typeof window === 'undefined') return;
-    
-    const statusFlow = ['Pending', 'Preparing', 'Ready', 'Completed'];
-    const currentIndex = statusFlow.indexOf(order.status);
-    
-    if (currentIndex < statusFlow.length - 1) {
-      const newStatus = statusFlow[currentIndex + 1];
-      const updatedOrder = { ...order, status: newStatus };
-      
-      const orders = JSON.parse(localStorage.getItem('bingsuOrders') || '[]');
-      const orderIndex = orders.findIndex((o: OrderData) => o.customerCode === order.customerCode);
-      if (orderIndex !== -1) {
-        orders[orderIndex] = updatedOrder;
-        localStorage.setItem('bingsuOrders', JSON.stringify(orders));
-      }
-      
-      setOrder(updatedOrder);
-      alert(`Order status updated to: ${newStatus}`);
-    }
-  };
-
   return (
     <div className="min-h-screen bg-[#EBE6DE]">
       <div className="w-full h-[100px] bg-[#69806C] flex items-center px-10 shadow-lg">
         <Link href="/home">
-          <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center cursor-pointer hover:bg-white/30 transition">
+          <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center cursor-pointer">
             <span className="text-white text-2xl">{'<'}</span>
           </div>
         </Link>
-        <h1 className="ml-6 text-white text-3xl font-['Iceland']">Track Your Order</h1>
+        <h1 className="ml-6 text-white text-3xl font-['Iceland']">Track Order</h1>
       </div>
 
       <div className="max-w-4xl mx-auto px-4 py-10">
@@ -245,58 +112,22 @@ export default function OrderTrackingPage() {
               value={customerCode}
               onChange={(e) => setCustomerCode(e.target.value)}
               placeholder="#xxxxx"
-              className="flex-1 p-3 border-2 border-[#69806C] rounded-lg text-xl font-['Iceland'] focus:outline-none focus:border-[#5a6e5e]"
+              className="flex-1 p-3 border-2 border-[#69806C] rounded-lg text-xl"
               disabled={loading}
               onKeyPress={(e) => e.key === 'Enter' && handleTrack()}
             />
             <button
               onClick={handleTrack}
               disabled={loading || !customerCode}
-              className="px-6 py-3 bg-[#69806C] text-white text-xl font-['Iceland'] rounded-lg hover:bg-[#5a6e5e] transition disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-6 py-3 bg-[#69806C] text-white text-xl rounded-lg disabled:opacity-50"
             >
               {loading ? 'Tracking...' : 'Track'}
             </button>
           </div>
           {error && (
-            <div className="mt-3">
-              <p className="text-red-500 font-['Iceland']">{error}</p>
-              <p className="text-sm text-gray-500 font-['Iceland'] mt-2">
-                Tip: Customer codes start with # (e.g., #ABC12)
-              </p>
-            </div>
+            <p className="mt-3 text-red-500 font-['Iceland']">{error}</p>
           )}
         </div>
-
-        {!order && !loading && recentOrders.length > 0 && (
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-8">
-            <p className="text-blue-800 font-['Iceland'] text-lg mb-2">
-              Recent orders from this browser
-            </p>
-            <div className="text-sm text-blue-700 font-['Iceland']">
-              <p>Your recent customer codes:</p>
-              {recentOrders.map((o: OrderData, i: number) => (
-                <button
-                  key={i}
-                  onClick={() => {
-                    setCustomerCode(o.customerCode);
-                    trackOrder(o.customerCode);
-                  }}
-                  className="block mt-1 text-blue-600 underline hover:text-blue-800"
-                >
-                  {o.customerCode} - {o.shavedIce.flavor} ({o.status})
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {!order && !loading && recentOrders.length === 0 && (
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-8">
-            <p className="text-blue-800 font-['Iceland'] text-lg">
-              No recent orders. Create a new order from the home page!
-            </p>
-          </div>
-        )}
 
         {order && (
           <div className="bg-white rounded-xl shadow-lg p-6">
@@ -304,14 +135,14 @@ export default function OrderTrackingPage() {
               <div className="text-6xl mb-2">{getStatusIcon(order.status)}</div>
               <h3 className="text-3xl font-['Iceland'] mb-2">Order {order.status}</h3>
               <p className="text-lg opacity-90 font-['Iceland']">
-                Order ID: {order.orderId || `ORD${Math.floor(Math.random() * 10000).toString().padStart(5, '0')}`}
+                Order ID: {order.orderId || order._id}
               </p>
             </div>
 
-            {order.status !== 'Completed' && (
+            {order.status !== 'Completed' && order.status !== 'Cancelled' && (
               <div className="mb-6 bg-gray-50 rounded-lg p-4">
                 <div className="flex items-center justify-between">
-                  <label className="flex items-center gap-2 cursor-pointer">
+                  <label className="flex items-center gap-2">
                     <input
                       type="checkbox"
                       checked={autoRefresh}
@@ -319,14 +150,14 @@ export default function OrderTrackingPage() {
                       className="w-4 h-4"
                     />
                     <span className="text-[#69806C] font-['Iceland']">
-                      Auto-update status (every 10 seconds)
+                      Auto-update (every 10s)
                     </span>
                   </label>
                   <button
-                    onClick={manualUpdateStatus}
-                    className="px-4 py-2 bg-[#69806C] text-white rounded font-['Iceland'] hover:bg-[#5a6e5e] transition"
+                    onClick={() => trackOrder(customerCode)}
+                    className="px-4 py-2 bg-[#69806C] text-white rounded hover:bg-[#5a6e5e]"
                   >
-                    Update Status
+                    Refresh
                   </button>
                 </div>
               </div>
@@ -337,29 +168,19 @@ export default function OrderTrackingPage() {
               <div className="relative pl-8">
                 <div className="absolute left-0 top-0 h-full w-0.5 bg-gray-300"></div>
                 
-                {getTimelineSteps().map((step, index) => {
-                  const currentIndex = getTimelineSteps().indexOf(order.status);
+                {['Pending', 'Preparing', 'Ready', 'Completed'].map((step, index) => {
+                  const steps = ['Pending', 'Preparing', 'Ready', 'Completed'];
+                  const currentIndex = steps.indexOf(order.status);
                   const isActive = currentIndex >= index;
-                  const isCancelled = order.status === 'Cancelled';
-                  const stepTime = getStepTime(step);
                   
                   return (
                     <div key={step} className="relative mb-6">
-                      <div 
-                        className={`absolute -left-8 w-4 h-4 rounded-full ${
-                          isCancelled ? 'bg-red-500' : 
-                          isActive ? 'bg-[#69806C]' : 'bg-gray-300'
-                        }`}
-                      ></div>
-                      <div className={`${
-                        isCancelled ? 'text-red-500' :
+                      <div className={`absolute -left-8 w-4 h-4 rounded-full ${
+                        isActive ? 'bg-[#69806C]' : 'bg-gray-300'
+                      }`}></div>
+                      <p className={`font-['Iceland'] text-lg font-bold ${
                         isActive ? 'text-[#69806C]' : 'text-gray-400'
-                      }`}>
-                        <p className="font-['Iceland'] text-lg font-bold">{step}</p>
-                        {stepTime && (
-                          <p className="text-sm font-['Iceland']">{stepTime}</p>
-                        )}
-                      </div>
+                      }`}>{step}</p>
                     </div>
                   );
                 })}
@@ -370,32 +191,32 @@ export default function OrderTrackingPage() {
               <h4 className="text-xl text-[#69806C] font-['Iceland'] mb-4">Order Details</h4>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-lg">
                 <div>
-                  <p className="text-gray-600 font-['Iceland']">Customer Code:</p>
-                  <p className="font-['Iceland'] text-xl text-[#543429] font-bold">{order.customerCode}</p>
+                  <p className="text-gray-600">Customer Code:</p>
+                  <p className="font-bold text-[#543429]">{order.customerCode}</p>
                 </div>
                 <div>
-                  <p className="text-gray-600 font-['Iceland']">Cup Size:</p>
-                  <p className="font-['Iceland'] text-xl text-[#543429] font-bold">{order.cupSize}</p>
+                  <p className="text-gray-600">Cup Size:</p>
+                  <p className="font-bold text-[#543429]">{order.cupSize}</p>
                 </div>
                 <div>
-                  <p className="text-gray-600 font-['Iceland']">Shaved Ice Flavor:</p>
-                  <p className="font-['Iceland'] text-xl text-[#543429] font-bold">{order.shavedIce.flavor}</p>
+                  <p className="text-gray-600">Flavor:</p>
+                  <p className="font-bold text-[#543429]">{order.shavedIce.flavor}</p>
                 </div>
                 <div>
-                  <p className="text-gray-600 font-['Iceland']">Toppings:</p>
-                  <p className="font-['Iceland'] text-xl text-[#543429] font-bold">
+                  <p className="text-gray-600">Toppings:</p>
+                  <p className="font-bold text-[#543429]">
                     {order.toppings.length > 0 
-                      ? order.toppings.map((t: any) => t.name).join(', ')
+                      ? order.toppings.map(t => t.name).join(', ')
                       : 'None'}
                   </p>
                 </div>
                 <div>
-                  <p className="text-gray-600 font-['Iceland']">Total Price:</p>
-                  <p className="font-['Iceland'] text-2xl text-[#543429] font-bold">฿{order.pricing.total}</p>
+                  <p className="text-gray-600">Total Price:</p>
+                  <p className="text-2xl font-bold text-[#543429]">฿{order.pricing.total}</p>
                 </div>
                 <div>
-                  <p className="text-gray-600 font-['Iceland']">Ordered At:</p>
-                  <p className="font-['Iceland'] text-xl text-[#543429]">
+                  <p className="text-gray-600">Ordered At:</p>
+                  <p className="text-[#543429]">
                     {new Date(order.createdAt).toLocaleString('th-TH')}
                   </p>
                 </div>
@@ -403,54 +224,21 @@ export default function OrderTrackingPage() {
               
               {order.specialInstructions && (
                 <div className="mt-4">
-                  <p className="text-gray-600 font-['Iceland']">Special Instructions:</p>
-                  <p className="font-['Iceland'] text-lg text-[#543429] bg-gray-50 p-3 rounded-lg mt-1">
+                  <p className="text-gray-600">Special Instructions:</p>
+                  <p className="bg-gray-50 p-3 rounded-lg mt-1">
                     {order.specialInstructions}
                   </p>
                 </div>
               )}
             </div>
 
-            {order.status === 'Pending' && (
-              <div className="mt-6 p-4 bg-yellow-50 border-2 border-yellow-200 rounded-lg">
-                <p className="text-yellow-800 font-['Iceland'] text-lg">
-                  Estimated preparation time: 10-15 minutes
-                </p>
-                <p className="text-yellow-700 font-['Iceland'] text-sm mt-1">
-                  We're reviewing your order and will start preparing it soon!
-                </p>
-              </div>
-            )}
-            
-            {order.status === 'Preparing' && (
-              <div className="mt-6 p-4 bg-blue-50 border-2 border-blue-200 rounded-lg">
-                <p className="text-blue-800 font-['Iceland'] text-lg">
-                  Your Bingsu is being crafted with care!
-                </p>
-                <p className="text-blue-700 font-['Iceland'] text-sm mt-1">
-                  Our chef is preparing your delicious shaved ice treat.
-                </p>
-              </div>
-            )}
-            
             {order.status === 'Ready' && (
               <div className="mt-6 p-4 bg-green-50 border-2 border-green-200 rounded-lg animate-pulse">
                 <p className="text-green-800 font-['Iceland'] text-xl font-bold">
                   Your order is ready for pickup!
                 </p>
-                <p className="text-green-700 font-['Iceland'] text-sm mt-1">
-                  Please come to the counter with your customer code: {order.customerCode}
-                </p>
-              </div>
-            )}
-
-            {order.status === 'Completed' && (
-              <div className="mt-6 p-4 bg-gray-50 border-2 border-gray-200 rounded-lg">
-                <p className="text-gray-800 font-['Iceland'] text-lg">
-                  Thank you for your order!
-                </p>
-                <p className="text-gray-600 font-['Iceland'] text-sm mt-1">
-                  We hope you enjoyed your Bingsu. See you again soon!
+                <p className="text-green-700 text-sm mt-1">
+                  Please come to the counter with code: {order.customerCode}
                 </p>
               </div>
             )}
@@ -459,29 +247,23 @@ export default function OrderTrackingPage() {
 
         <div className="mt-8 flex justify-center gap-4">
           <Link href="/home">
-            <button className="px-6 py-3 bg-[#69806C] text-white font-['Iceland'] text-lg rounded-lg hover:bg-[#5a6e5e] transition shadow-lg">
+            <button className="px-6 py-3 bg-[#69806C] text-white text-lg rounded-lg">
               Order New Bingsu
             </button>
           </Link>
           {order && order.status === 'Completed' && (
-            <Link href={`/review`}>
-              <button className="px-6 py-3 bg-white border-2 border-[#69806C] text-[#69806C] font-['Iceland'] text-lg rounded-lg hover:bg-[#69806C] hover:text-white transition shadow-lg">
-                Leave a Review
+            <Link href="/review">
+              <button className="px-6 py-3 border-2 border-[#69806C] text-[#69806C] text-lg rounded-lg">
+                Leave Review
               </button>
             </Link>
           )}
-        </div>
-
-        <div className="mt-12 text-center text-gray-500 font-['Iceland']">
-          <p>Need help? Contact our staff at the counter</p>
-          <p className="text-sm mt-2">Customer codes start with # followed by 5 characters</p>
         </div>
       </div>
     </div>
   );
 }
 
-// Force SSR - ป้องกัน pre-render error
 export async function getServerSideProps() {
   return { props: {} };
 }

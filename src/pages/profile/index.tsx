@@ -1,4 +1,4 @@
-// src/pages/profile/index.tsx
+// src/pages/profile/index.tsx - Full MongoDB Integration
 
 'use client';
 
@@ -7,10 +7,11 @@ import { useRouter } from 'next/router';
 import Image from 'next/image';
 import Link from 'next/link';
 import LogoutModal from '@/components/LogoutModal';
-import { getCurrentUser, isAuthenticated, User } from '@/utils/api';
+import { getCurrentUser, isAuthenticated, User, api } from '@/utils/api';
 
-interface LocalOrder {
-  orderId?: string;
+interface Order {
+  _id: string;
+  orderId: string;
   customerCode: string;
   cupSize: string;
   shavedIce: { flavor: string };
@@ -25,40 +26,35 @@ export default function ProfilePage() {
   const [showLogout, setShowLogout] = useState(false);
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-  const [userOrders, setUserOrders] = useState<LocalOrder[]>([]);
+  const [userOrders, setUserOrders] = useState<Order[]>([]);
   const [error, setError] = useState('');
 
   useEffect(() => {
-    // Check if user is authenticated
     if (!isAuthenticated()) {
       router.push('/login');
       return;
     }
 
-    // Load user data from localStorage
-    const currentUser = getCurrentUser();
-    if (currentUser) {
-      setUser(currentUser);
-      loadUserOrders();
-    } else {
-      router.push('/login');
-    }
-    
-    setLoading(false);
+    loadUserProfile();
   }, []);
 
-  const loadUserOrders = () => {
+  const loadUserProfile = async () => {
     try {
-      // Get orders from localStorage
-      const orders = JSON.parse(localStorage.getItem('bingsuOrders') || '[]');
-      
-      // Add orderId if missing and format orders
-      const formattedOrders = orders.map((order: any, index: number) => ({
-        ...order,
-        orderId: order.orderId || `ORD${(index + 1).toString().padStart(5, '0')}`
-      }));
-      
-      setUserOrders(formattedOrders);
+      const result = await api.getProfile();
+      setUser(result.user);
+      await loadUserOrders();
+    } catch (error) {
+      console.error('Failed to load profile:', error);
+      router.push('/login');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadUserOrders = async () => {
+    try {
+      const result = await api.getMyOrders();
+      setUserOrders(result.orders || []);
     } catch (error) {
       console.error('Failed to load user orders:', error);
       setUserOrders([]);
@@ -67,18 +63,11 @@ export default function ProfilePage() {
 
   const handleLogout = async () => {
     try {
-      // Clear local storage
-      localStorage.removeItem('token');
-      localStorage.removeItem('user');
-      
-      // Show success message
+      await api.logout();
       alert('Successfully logged out!');
-      
-      // Redirect to login
       router.push('/login');
     } catch (error) {
       console.error('Logout error:', error);
-      // Still redirect even if there's an error
       localStorage.removeItem('token');
       localStorage.removeItem('user');
       router.push('/login');
@@ -98,18 +87,6 @@ export default function ProfilePage() {
     return userOrders
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
       .slice(0, 3);
-  };
-
-  // Generate demo user data if not exists
-  const ensureUserData = (currentUser: User): User => {
-    return {
-      ...currentUser,
-      loyaltyPoints: currentUser.loyaltyPoints ?? Math.floor(Math.random() * 100),
-      loyaltyCard: currentUser.loyaltyCard ?? {
-        stamps: Math.floor(Math.random() * 9),
-        totalFreeDrinks: Math.floor(Math.random() * 3)
-      }
-    };
   };
 
   if (loading) {
@@ -135,7 +112,6 @@ export default function ProfilePage() {
     );
   }
 
-  const enhancedUser = ensureUserData(user);
   const loyaltyProgress = calculateLoyaltyProgress();
   const recentActivity = getRecentActivity();
 
@@ -159,17 +135,17 @@ export default function ProfilePage() {
           <div className="w-[90%] max-w-[500px] bg-gradient-to-b from-[#69806C] to-[#EBE6DE] border border-white/50 shadow-xl rounded-xl p-6 text-center">
             <div className="w-20 h-20 bg-white/20 rounded-full mx-auto mb-4 flex items-center justify-center">
               <span className="text-white text-3xl font-['Iceland']">
-                {enhancedUser.fullName.charAt(0).toUpperCase()}
+                {user.fullName.charAt(0).toUpperCase()}
               </span>
             </div>
-            <h2 className="text-white text-4xl font-['Iceland'] mb-2">{enhancedUser.fullName}</h2>
-            <p className="text-white/90 text-xl font-['Iceland'] mb-4">{enhancedUser.email}</p>
+            <h2 className="text-white text-4xl font-['Iceland'] mb-2">{user.fullName}</h2>
+            <p className="text-white/90 text-xl font-['Iceland'] mb-4">{user.email}</p>
             
             {/* User Stats */}
             <div className="grid grid-cols-2 gap-4 mb-6 text-white">
               <div className="bg-white/20 rounded-lg p-3">
                 <p className="text-sm opacity-80 font-['Iceland']">Loyalty Points</p>
-                <p className="text-2xl font-bold font-['Iceland']">{enhancedUser.loyaltyPoints}</p>
+                <p className="text-2xl font-bold font-['Iceland']">{user.loyaltyPoints}</p>
               </div>
               <div className="bg-white/20 rounded-lg p-3">
                 <p className="text-sm opacity-80 font-['Iceland']">Total Orders</p>
@@ -206,7 +182,7 @@ export default function ProfilePage() {
                 <div className="mb-4">
                   <div className="flex justify-between items-center mb-2">
                     <span className="text-[#69806C] font-['Iceland'] text-lg">
-                      Progress: {enhancedUser.loyaltyCard.stamps}/9
+                      Progress: {user.loyaltyCard.stamps}/9
                     </span>
                     <span className="text-[#69806C] font-['Iceland'] text-sm">
                       {loyaltyProgress.nextStamp} more for free drink!
@@ -226,14 +202,14 @@ export default function ProfilePage() {
                     <div
                       key={idx}
                       className={`w-[70px] h-[70px] rounded-full border-2 border-white flex items-center justify-center transition-all ${
-                        idx < enhancedUser.loyaltyCard.stamps
+                        idx < user.loyaltyCard.stamps
                           ? 'bg-[#69806C] text-white text-xl'
                           : idx === 8
                           ? 'bg-[#EBE6DE] text-[#69806C] text-sm font-bold'
                           : 'bg-[#EBE6DE]'
                       }`}
                     >
-                      {idx < enhancedUser.loyaltyCard.stamps ? '✓' : 
+                      {idx < user.loyaltyCard.stamps ? '✓' : 
                        idx === 8 ? 'Free' : idx + 1}
                     </div>
                   ))}
@@ -242,7 +218,7 @@ export default function ProfilePage() {
                 {/* Loyalty Stats */}
                 <div className="mt-6 text-center">
                   <p className="text-[#69806C] font-['Iceland'] text-lg">
-                    Total Free Drinks Earned: <span className="font-bold">{enhancedUser.loyaltyCard.totalFreeDrinks}</span>
+                    Total Free Drinks Earned: <span className="font-bold">{user.loyaltyCard.totalFreeDrinks}</span>
                   </p>
                 </div>
               </div>
@@ -266,11 +242,11 @@ export default function ProfilePage() {
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {recentActivity.map((order, index) => (
-                <div key={order.orderId || index} className="bg-white rounded-xl shadow-lg p-6 hover:shadow-xl transition">
+              {recentActivity.map((order) => (
+                <div key={order._id} className="bg-white rounded-xl shadow-lg p-6 hover:shadow-xl transition">
                   <div className="flex justify-between items-start mb-3">
                     <p className="text-lg font-['Iceland'] text-[#69806C] font-bold">
-                      {order.orderId || `Order #${index + 1}`}
+                      {order.orderId}
                     </p>
                     <span className={`px-2 py-1 rounded text-xs font-['Iceland'] ${
                       order.status === 'Completed' ? 'bg-green-100 text-green-800' :
