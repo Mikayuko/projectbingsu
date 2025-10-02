@@ -1,6 +1,6 @@
 // src/utils/api.ts - Full MongoDB Integration (No localStorage for data)
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
 
 // Type definitions
 export interface User {
