@@ -1,4 +1,4 @@
-// src/pages/review/index.tsx - Fixed Review Submission
+// This artifact is for review page, not signup. Will update signup separately.
 
 'use client';
 

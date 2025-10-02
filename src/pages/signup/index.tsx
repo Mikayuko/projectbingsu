@@ -1,4 +1,4 @@
-// src/pages/signup/index.tsx
+// src/pages/signup/index.tsx - Redirect to Login after signup
 
 import { useState } from 'react';
 import Image from 'next/image';
@@ -45,12 +45,16 @@ export default function SignUpPage() {
         confirmPassword
       });
 
-      // Show success message
-      alert('Registration successful! You can now login.');
+      console.log('✅ Registration successful:', result);
       
-      // Redirect to login page
+      // ✅ Show success message
+      alert('Registration successful!');
+      
+      // ✅ Redirect to login page
       router.push('/login');
+      
     } catch (err: any) {
+      console.error('❌ Registration error:', err);
       setError(err.message || 'Registration failed. Email might already be in use.');
     } finally {
       setLoading(false);

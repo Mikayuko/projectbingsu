@@ -199,7 +199,7 @@ export default function OrderHubPage() {
               <div className="max-w-2xl mx-auto">
                 <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
                   <p className="text-sm text-blue-800 font-['Iceland']">
-                    💡 Your customer code should look like: <strong>#ABC12</strong>
+                    💡 Your customer code should look like: <strong>ABC12</strong>
                   </p>
                 </div>
 
@@ -211,7 +211,7 @@ export default function OrderHubPage() {
                       setTrackingCode(e.target.value.toUpperCase());
                       setTrackError('');
                     }}
-                    placeholder="#XXXXX"
+                    placeholder="XXXXX"
                     className="flex-1 p-4 text-xl font-['Iceland'] border-2 border-[#69806C] rounded-lg focus:outline-none focus:border-[#5a6e5e] uppercase"
                     onKeyPress={(e) => e.key === 'Enter' && handleTrack()}
                     maxLength={6}
@@ -248,18 +248,11 @@ export default function OrderHubPage() {
 
                 {/* Auto Refresh Toggle */}
                 {trackedOrder.status !== 'Completed' && trackedOrder.status !== 'Cancelled' && (
-                  <div className="mb-6 bg-gray-50 rounded-lg p-4">
+                  
                     <div className="flex items-center justify-between">
                       <label className="flex items-center gap-2">
-                        <input
-                          type="checkbox"
-                          checked={autoRefresh}
-                          onChange={(e) => setAutoRefresh(e.target.checked)}
-                          className="w-4 h-4"
-                        />
-                        <span className="text-[#69806C] font-['Iceland']">
-                          Auto-update (every 10s)
-                        </span>
+                        
+                        
                       </label>
                       <button
                         onClick={() => trackOrderSilent(trackedOrder.customerCode)}
@@ -268,7 +261,7 @@ export default function OrderHubPage() {
                         Refresh Now
                       </button>
                     </div>
-                  </div>
+                  
                 )}
 
                 {/* Progress Timeline */}

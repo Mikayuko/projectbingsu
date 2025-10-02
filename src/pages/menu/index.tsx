@@ -1,4 +1,4 @@
-// src/pages/menu/index.tsx - With Fallback for API errors
+// src/pages/menu/index.tsx - Remove # from Customer Code display
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
@@ -46,7 +46,6 @@ const toppings: MenuItem[] = [
   { name: 'Strawberry', score: 5, description: 'Sweet & juicy', image: '/images/strawberry.png', textColor: '#B51212' },
 ];
 
-// Test codes for fallback
 const TEST_CODES: { [key: string]: string } = {
   'TEST1': 'S', 'TEST2': 'M', 'TEST3': 'L',
   'DEMO1': 'S', 'DEMO2': 'M', 'DEMO3': 'L',
@@ -81,7 +80,6 @@ export default function MenuPage() {
     setError('');
     
     try {
-      // Try API first
       const result = await api.validateMenuCode(codeStr.toUpperCase());
       
       if (result.valid) {
@@ -96,7 +94,6 @@ export default function MenuPage() {
     } catch (err: any) {
       console.error('API validation failed:', err);
       
-      // Fallback to test codes
       const testSize = TEST_CODES[codeStr.toUpperCase()];
       if (testSize) {
         setMenuCode(codeStr.toUpperCase());
@@ -172,22 +169,20 @@ export default function MenuPage() {
       };
 
       if (apiAvailable) {
-        // Try API first
         try {
           const result = await api.createOrder(orderData);
-          setCustomerCode(result.customerCode);
+          // ✅ Remove # from customer code
+          setCustomerCode(result.customerCode.replace('#', ''));
           setShowSuccessModal(true);
         } catch (apiError) {
           console.error('API order creation failed:', apiError);
-          // Fallback to local order
-          const localCustomerCode = `#${Math.random().toString(36).substr(2, 5).toUpperCase()}`;
+          const localCustomerCode = `${Math.random().toString(36).substr(2, 5).toUpperCase()}`;
           setCustomerCode(localCustomerCode);
           setShowSuccessModal(true);
           setError('⚠️ Order created in offline mode');
         }
       } else {
-        // Already in offline mode, create local order
-        const localCustomerCode = `#${Math.random().toString(36).substr(2, 5).toUpperCase()}`;
+        const localCustomerCode = `${Math.random().toString(36).substr(2, 5).toUpperCase()}`;
         setCustomerCode(localCustomerCode);
         setShowSuccessModal(true);
       }
@@ -256,7 +251,6 @@ export default function MenuPage() {
       </div>
 
       <div className="max-w-6xl mx-auto px-4 py-8">
-        {/* API Status Warning */}
         {!apiAvailable && (
           <div className="mb-4 p-3 bg-yellow-100 border border-yellow-400 text-yellow-800 rounded font-['Iceland']">
             ⚠️ Backend API unavailable - Using offline mode. Your order will be saved locally.
@@ -390,6 +384,7 @@ export default function MenuPage() {
             </h2>
             <div className="bg-gray-100 p-4 rounded mb-4">
               <p className="text-sm text-gray-600 text-center font-['Iceland']">Customer Code:</p>
+              {/* ✅ Display without # */}
               <p className="text-4xl font-bold text-[#69806C] text-center font-['Iceland']">{customerCode}</p>
             </div>
             <p className="text-sm mb-4 text-center font-['Iceland']">
