@@ -161,20 +161,24 @@ router.post('/create', optionalAuth, [
   }
 });
 
+
 // GET /api/orders/track/:customerCode
 router.get('/track/:customerCode', async (req, res) => {
   try {
-    console.log('🔍 Tracking order:', req.params.customerCode);
-    
-    const order = await Order.findOne({ 
-      customerCode: req.params.customerCode 
-    });
-    
+    let code = req.params.customerCode.toUpperCase();
+    // ตัด # ถ้ามี
+    if (code.startsWith('#')) code = code.slice(1);
+
+    console.log('🔍 Tracking order:', code);
+
+    // หา order แบบ case-insensitive และ ignore #
+    const order = await Order.findOne({ customerCode: new RegExp(`^#?${code}$`, 'i') });
+
     if (!order) {
-      console.log('❌ Order not found:', req.params.customerCode);
+      console.log('❌ Order not found:', code);
       return res.status(404).json({ message: 'Order not found' });
     }
-    
+
     console.log('✅ Order found:', order.orderId);
     res.json({ order });
   } catch (error) {
@@ -185,6 +189,7 @@ router.get('/track/:customerCode', async (req, res) => {
     });
   }
 });
+
 
 // GET /api/orders/my-orders
 router.get('/my-orders', authenticate, async (req, res) => {
