@@ -229,7 +229,7 @@ class BingsuAPI {
   }
 
   async trackOrder(customerCode: string) {
-    const response = await fetch(`${API_BASE_URL}/api/orders/track/${customerCode}`, {
+    const response = await fetch(`${API_BASE_URL}/api/order/track/${customerCode}`, {
       headers: getAuthHeaders()
     });
     

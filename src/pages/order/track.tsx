@@ -305,7 +305,7 @@ export default function OrderTrackingPage() {
               Debug: API Base = {process.env.NEXT_PUBLIC_API_URL || 'localhost:5000'}
             </p>
             <p className="text-xs text-gray-600 font-mono">
-              Track Endpoint: /api/orders/track/{customerCode}
+              Track Endpoint: /api/order/track/{customerCode}
             </p>
           </div>
         )}
