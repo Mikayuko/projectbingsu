@@ -18,36 +18,38 @@ const userRoutes = require('./routes/users');
 const app = express();
 
 // CORS Configuration - รองรับ Render (Backend) + Vercel (Frontend)
-const allowedOrigins = [
-  'http://localhost:3000',                          // Local development
-  'http://localhost:5173',                          // Vite local (ถ้าใช้)
-  'https://projectbingsu.vercel.app',              // Vercel production
-  'https://projectbingsu-git-main.vercel.app',     // Vercel preview branches
-  'https://*.vercel.app',                          // Vercel preview deployments
-  process.env.FRONTEND_URL                          // From .env
-].filter(Boolean);
-
 app.use(cors({
   origin: function(origin, callback) {
-    // อนุญาต requests ที่ไม่มี origin (Postman, mobile apps, server-to-server)
+    // อนุญาต requests ที่ไม่มี origin (Postman, mobile apps, curl, server-to-server)
     if (!origin) return callback(null, true);
     
-    // ตรวจสอบว่า origin อยู่ใน allowedOrigins หรือไม่
-    const isAllowed = allowedOrigins.some(allowed => {
-      if (allowed.includes('*')) {
-        // Support wildcard domains
-        const pattern = new RegExp(allowed.replace('*', '.*'));
-        return pattern.test(origin);
-      }
-      return allowed === origin;
-    });
+    // ✅ Allowed origins
+    const allowedOrigins = [
+      'http://localhost:3000',
+      'http://localhost:5173',
+      'https://projectbingsu.vercel.app',              // Vercel production
+      'https://projectbingsu-git-main.vercel.app',
+      process.env.FRONTEND_URL
+    ].filter(Boolean);
     
-    if (isAllowed || process.env.NODE_ENV === 'development') {
-      callback(null, true);
-    } else {
-      console.warn(`CORS blocked origin: ${origin}`);
-      callback(new Error('Not allowed by CORS'));
+    // ✅ Check exact match
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
     }
+    
+    // ✅ Check Vercel preview URLs (projectbingsu-*.vercel.app)
+    if (origin.match(/^https:\/\/projectbingsu.*\.vercel\.app$/)) {
+      return callback(null, true);
+    }
+    
+    // ✅ Development mode - allow all
+    if (process.env.NODE_ENV === 'development') {
+      return callback(null, true);
+    }
+    
+    // ❌ Block other origins
+    console.warn(`CORS blocked origin: ${origin}`);
+    callback(new Error('Not allowed by CORS'));
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
