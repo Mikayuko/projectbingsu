@@ -1,4 +1,4 @@
-// src/pages/order/index.tsx
+// src/pages/order/index.tsx - Combined Order Tracking (Single Page)
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
@@ -15,6 +15,7 @@ interface Order {
   pricing: { total: number };
   status: string;
   createdAt: string;
+  specialInstructions?: string;
 }
 
 export default function OrderHubPage() {
@@ -25,11 +26,26 @@ export default function OrderHubPage() {
   const [activeTab, setActiveTab] = useState<'track' | 'history'>('track');
   const user = getCurrentUser();
 
+  // ✅ Track Order State
+  const [trackedOrder, setTrackedOrder] = useState<Order | null>(null);
+  const [trackError, setTrackError] = useState('');
+  const [autoRefresh, setAutoRefresh] = useState(true);
+
   useEffect(() => {
     if (isAuthenticated() && activeTab === 'history') {
       fetchMyOrders();
     }
   }, [activeTab]);
+
+  // ✅ Auto refresh tracked order
+  useEffect(() => {
+    if (trackedOrder && autoRefresh && trackedOrder.status !== 'Completed' && trackedOrder.status !== 'Cancelled') {
+      const interval = setInterval(() => {
+        trackOrderSilent(trackedOrder.customerCode);
+      }, 10000);
+      return () => clearInterval(interval);
+    }
+  }, [trackedOrder, autoRefresh]);
 
   const fetchMyOrders = async () => {
     setLoading(true);
@@ -43,9 +59,43 @@ export default function OrderHubPage() {
     }
   };
 
-  const handleTrack = () => {
-    if (trackingCode) {
-      router.push(`/order/track?code=${trackingCode}`);
+  // ✅ Track Order Function
+  const handleTrack = async () => {
+    if (!trackingCode.trim()) {
+      setTrackError('Please enter a customer code');
+      return;
+    }
+
+    const cleanCode = trackingCode.trim().toUpperCase();
+    setLoading(true);
+    setTrackError('');
+    setTrackedOrder(null);
+
+    try {
+      console.log('🔍 Tracking order:', cleanCode);
+      const result = await api.trackOrder(cleanCode);
+      setTrackedOrder(result.order);
+      console.log('✅ Order found:', result.order);
+    } catch (err: any) {
+      console.error('❌ Track error:', err);
+      if (err.message.includes('404')) {
+        setTrackError('Order not found. Please check your customer code.');
+      } else {
+        setTrackError(err.message || 'Failed to track order');
+      }
+      setTrackedOrder(null);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Silent refresh for auto-update
+  const trackOrderSilent = async (code: string) => {
+    try {
+      const result = await api.trackOrder(code);
+      setTrackedOrder(result.order);
+    } catch (error) {
+      console.error('Silent track failed:', error);
     }
   };
 
@@ -58,6 +108,28 @@ export default function OrderHubPage() {
       'Cancelled': 'bg-red-100 text-red-800'
     };
     return styles[status as keyof typeof styles] || 'bg-gray-100 text-gray-800';
+  };
+
+  const getStatusColor = (status: string) => {
+    const colors = {
+      'Pending': 'bg-yellow-500',
+      'Preparing': 'bg-blue-500',
+      'Ready': 'bg-green-500',
+      'Completed': 'bg-gray-500',
+      'Cancelled': 'bg-red-500'
+    };
+    return colors[status as keyof typeof colors] || 'bg-gray-400';
+  };
+
+  const getStatusIcon = (status: string) => {
+    const icons = {
+      'Pending': '⏳',
+      'Preparing': '👨‍🍳',
+      'Ready': '✅',
+      'Completed': '🎉',
+      'Cancelled': '❌'
+    };
+    return icons[status as keyof typeof icons] || '❓';
   };
 
   return (
@@ -87,7 +159,11 @@ export default function OrderHubPage() {
         <div className="flex justify-center mb-8">
           <div className="bg-white rounded-lg shadow-md p-1 inline-flex">
             <button
-              onClick={() => setActiveTab('track')}
+              onClick={() => {
+                setActiveTab('track');
+                setTrackedOrder(null);
+                setTrackError('');
+              }}
               className={`px-6 py-3 rounded-md font-['Iceland'] text-lg transition ${
                 activeTab === 'track'
                   ? 'bg-[#69806C] text-white'
@@ -113,76 +189,226 @@ export default function OrderHubPage() {
 
         {/* Track Order Tab */}
         {activeTab === 'track' && (
-          <div className="bg-white rounded-xl shadow-lg p-8">
-            <div className="max-w-2xl mx-auto">
+          <div className="space-y-6">
+            {/* Track Form */}
+            <div className="bg-white rounded-xl shadow-lg p-8">
               <h3 className="text-2xl text-[#69806C] font-['Iceland'] mb-6 text-center">
                 Track Your Order
               </h3>
               
-              {/* Quick Track Form */}
-              <div className="mb-8">
-                <label className="block text-gray-700 font-['Iceland'] text-lg mb-2">
-                  Enter Customer Code
-                </label>
-                <div className="flex gap-4">
+              <div className="max-w-2xl mx-auto">
+                <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                  <p className="text-sm text-blue-800 font-['Iceland']">
+                    💡 Your customer code should look like: <strong>#ABC12</strong>
+                  </p>
+                </div>
+
+                <div className="flex gap-4 mb-4">
                   <input
                     type="text"
                     value={trackingCode}
-                    onChange={(e) => setTrackingCode(e.target.value)}
-                    placeholder="#xxxxx"
-                    className="flex-1 p-4 text-xl font-['Iceland'] border-2 border-[#69806C] rounded-lg focus:outline-none focus:border-[#5a6e5e]"
+                    onChange={(e) => {
+                      setTrackingCode(e.target.value.toUpperCase());
+                      setTrackError('');
+                    }}
+                    placeholder="#XXXXX"
+                    className="flex-1 p-4 text-xl font-['Iceland'] border-2 border-[#69806C] rounded-lg focus:outline-none focus:border-[#5a6e5e] uppercase"
                     onKeyPress={(e) => e.key === 'Enter' && handleTrack()}
+                    maxLength={6}
+                    disabled={loading}
                   />
                   <button
                     onClick={handleTrack}
-                    disabled={!trackingCode}
+                    disabled={loading || !trackingCode.trim()}
                     className="px-8 py-4 bg-[#69806C] text-white text-xl font-['Iceland'] rounded-lg hover:bg-[#5a6e5e] transition disabled:opacity-50"
                   >
-                    Track
+                    {loading ? 'Tracking...' : 'Track'}
                   </button>
                 </div>
-                <p className="text-sm text-gray-500 font-['Iceland'] mt-2">
-                  * Customer code starts with # followed by 5 characters
-                </p>
-              </div>
 
-              {/* Info Cards */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-8">
-                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-                  <h4 className="font-['Iceland'] text-lg text-yellow-800 mb-2">
+                {trackError && (
+                  <div className="p-3 bg-red-100 border border-red-400 text-red-700 rounded font-['Iceland']">
+                    {trackError}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Tracked Order Display */}
+            {trackedOrder && (
+              <div className="bg-white rounded-xl shadow-lg p-6">
+                {/* Status Header */}
+                <div className={`${getStatusColor(trackedOrder.status)} text-white rounded-lg p-6 mb-6 text-center`}>
+                  <div className="text-6xl mb-2">{getStatusIcon(trackedOrder.status)}</div>
+                  <h3 className="text-3xl font-['Iceland'] mb-2">Order {trackedOrder.status}</h3>
+                  <p className="text-lg opacity-90 font-['Iceland']">
+                    Order ID: {trackedOrder.orderId || trackedOrder._id}
+                  </p>
+                </div>
+
+                {/* Auto Refresh Toggle */}
+                {trackedOrder.status !== 'Completed' && trackedOrder.status !== 'Cancelled' && (
+                  <div className="mb-6 bg-gray-50 rounded-lg p-4">
+                    <div className="flex items-center justify-between">
+                      <label className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={autoRefresh}
+                          onChange={(e) => setAutoRefresh(e.target.checked)}
+                          className="w-4 h-4"
+                        />
+                        <span className="text-[#69806C] font-['Iceland']">
+                          Auto-update (every 10s)
+                        </span>
+                      </label>
+                      <button
+                        onClick={() => trackOrderSilent(trackedOrder.customerCode)}
+                        className="px-4 py-2 bg-[#69806C] text-white rounded hover:bg-[#5a6e5e] font-['Iceland']"
+                      >
+                        Refresh Now
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Progress Timeline */}
+                <div className="mb-6">
+                  <h4 className="text-xl text-[#69806C] font-['Iceland'] mb-4">Order Progress</h4>
+                  <div className="relative pl-8">
+                    <div className="absolute left-0 top-0 h-full w-0.5 bg-gray-300"></div>
+                    
+                    {['Pending', 'Preparing', 'Ready', 'Completed'].map((step, index) => {
+                      const steps = ['Pending', 'Preparing', 'Ready', 'Completed'];
+                      const currentIndex = steps.indexOf(trackedOrder.status);
+                      const isActive = currentIndex >= index;
+                      
+                      return (
+                        <div key={step} className="relative mb-6">
+                          <div className={`absolute -left-8 w-4 h-4 rounded-full ${
+                            isActive ? 'bg-[#69806C]' : 'bg-gray-300'
+                          }`}></div>
+                          <p className={`font-['Iceland'] text-lg font-bold ${
+                            isActive ? 'text-[#69806C]' : 'text-gray-400'
+                          }`}>{step}</p>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Order Details */}
+                <div className="border-t pt-6">
+                  <h4 className="text-xl text-[#69806C] font-['Iceland'] mb-4">Order Details</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-lg font-['Iceland']">
+                    <div>
+                      <p className="text-gray-600">Customer Code:</p>
+                      <p className="font-bold text-[#543429]">{trackedOrder.customerCode.replace('#', '')}</p>
+                    </div>
+                    <div>
+                      <p className="text-gray-600">Cup Size:</p>
+                      <p className="font-bold text-[#543429]">{trackedOrder.cupSize}</p>
+                    </div>
+                    <div>
+                      <p className="text-gray-600">Flavor:</p>
+                      <p className="font-bold text-[#543429]">{trackedOrder.shavedIce.flavor}</p>
+                    </div>
+                    <div>
+                      <p className="text-gray-600">Toppings:</p>
+                      <p className="font-bold text-[#543429]">
+                        {trackedOrder.toppings.length > 0 
+                          ? trackedOrder.toppings.map(t => t.name).join(', ')
+                          : 'None'}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-gray-600">Total Price:</p>
+                      <p className="text-2xl font-bold text-[#543429]">฿{trackedOrder.pricing.total}</p>
+                    </div>
+                    <div>
+                      <p className="text-gray-600">Ordered At:</p>
+                      <p className="text-[#543429]">
+                        {new Date(trackedOrder.createdAt).toLocaleString('th-TH')}
+                      </p>
+                    </div>
+                  </div>
+                  
+                  {trackedOrder.specialInstructions && (
+                    <div className="mt-4">
+                      <p className="text-gray-600 font-['Iceland']">Special Instructions:</p>
+                      <p className="bg-gray-50 p-3 rounded-lg mt-1 font-['Iceland']">
+                        {trackedOrder.specialInstructions}
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Ready Alert */}
+                {trackedOrder.status === 'Ready' && (
+                  <div className="mt-6 p-4 bg-green-50 border-2 border-green-200 rounded-lg animate-pulse">
+                    <p className="text-green-800 font-['Iceland'] text-xl font-bold">
+                      🎉 Your order is ready for pickup!
+                    </p>
+                    <p className="text-green-700 text-sm mt-1 font-['Iceland']">
+                      Please come to the counter with code: <strong>{trackedOrder.customerCode.replace('#', '')}</strong>
+                    </p>
+                  </div>
+                )}
+
+                {/* Actions */}
+                <div className="mt-6 flex gap-4 justify-center">
+                  <button
+                    onClick={() => {
+                      setTrackedOrder(null);
+                      setTrackingCode('');
+                    }}
+                    className="px-6 py-3 border-2 border-[#69806C] text-[#69806C] rounded-lg font-['Iceland'] hover:bg-[#69806C] hover:text-white transition"
+                  >
+                    Track Another Order
+                  </button>
+                  {trackedOrder.status === 'Completed' && (
+                    <Link href="/review">
+                      <button className="px-6 py-3 bg-[#947E5A] text-white rounded-lg font-['Iceland'] hover:bg-[#7a6648] transition">
+                        Leave Review
+                      </button>
+                    </Link>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Info Cards (shown when no order tracked) */}
+            {!trackedOrder && !trackError && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6">
+                  <h4 className="font-['Iceland'] text-xl text-yellow-800 mb-3">
                     💡 How to track?
                   </h4>
-                  <ol className="text-sm text-yellow-700 font-['Iceland'] space-y-1">
+                  <ol className="text-sm text-yellow-700 font-['Iceland'] space-y-2">
                     <li>1. Get your customer code after ordering</li>
-                    <li>2. Enter the code above</li>
-                    <li>3. View real-time order status</li>
+                    <li>2. Enter the code above (e.g., #ABC12)</li>
+                    <li>3. Click "Track" to see real-time status</li>
                   </ol>
                 </div>
                 
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                  <h4 className="font-['Iceland'] text-lg text-blue-800 mb-2">
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-6">
+                  <h4 className="font-['Iceland'] text-xl text-blue-800 mb-3">
                     📱 Save your code!
                   </h4>
-                  <p className="text-sm text-blue-700 font-['Iceland']">
-                    Take a photo or write down your customer code to track your order anytime
+                  <p className="text-sm text-blue-700 font-['Iceland'] mb-3">
+                    Take a photo or write down your customer code to track your order anytime.
                   </p>
+                  <Link href="/home">
+                    <button className="w-full px-4 py-2 bg-blue-600 text-white rounded font-['Iceland'] hover:bg-blue-700 transition">
+                      Order New Bingsu →
+                    </button>
+                  </Link>
                 </div>
               </div>
-
-              {/* Quick Actions */}
-              <div className="mt-8 pt-8 border-t text-center">
-                <p className="text-gray-600 font-['Iceland'] mb-4">Don't have an order yet?</p>
-                <Link href="/menu">
-                  <button className="px-8 py-3 bg-[#947E5A] text-white font-['Iceland'] text-lg rounded-lg hover:bg-[#7a6648] transition">
-                    Order Now →
-                  </button>
-                </Link>
-              </div>
-            </div>
+            )}
           </div>
         )}
 
-        {/* Order History Tab */}
+        {/* Order History Tab - unchanged */}
         {activeTab === 'history' && isAuthenticated() && (
           <div className="bg-white rounded-xl shadow-lg p-8">
             <h3 className="text-2xl text-[#69806C] font-['Iceland'] mb-6">
@@ -199,7 +425,7 @@ export default function OrderHubPage() {
                 <p className="text-gray-500 font-['Iceland'] text-lg mb-4">
                   No orders yet
                 </p>
-                <Link href="/menu">
+                <Link href="/home">
                   <button className="px-6 py-3 bg-[#69806C] text-white font-['Iceland'] rounded-lg hover:bg-[#5a6e5e] transition">
                     Make Your First Order
                   </button>
@@ -229,7 +455,7 @@ export default function OrderHubPage() {
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
                       <div>
                         <p className="text-xs text-gray-500 font-['Iceland']">Customer Code</p>
-                        <p className="font-['Iceland'] text-[#543429] font-bold">{order.customerCode}</p>
+                        <p className="font-['Iceland'] text-[#543429] font-bold">{order.customerCode.replace('#', '')}</p>
                       </div>
                       <div>
                         <p className="text-xs text-gray-500 font-['Iceland']">Size</p>
@@ -255,11 +481,17 @@ export default function OrderHubPage() {
                     )}
 
                     <div className="flex gap-2">
-                      <Link href={`/order/track?code=${order.customerCode}`}>
-                        <button className="px-4 py-2 bg-[#69806C] text-white font-['Iceland'] text-sm rounded hover:bg-[#5a6e5e] transition">
-                          Track Order
-                        </button>
-                      </Link>
+                      <button
+                        onClick={() => {
+                          setActiveTab('track');
+                          // ✅ เอา # ออกก่อนส่งไป track
+                          setTrackingCode(order.customerCode.replace('#', ''));
+                          setTimeout(() => handleTrack(), 100);
+                        }}
+                        className="px-4 py-2 bg-[#69806C] text-white font-['Iceland'] text-sm rounded hover:bg-[#5a6e5e] transition"
+                      >
+                        Track Order
+                      </button>
                       {order.status === 'Completed' && (
                         <Link href={`/review?orderId=${order._id}`}>
                           <button className="px-4 py-2 border border-[#69806C] text-[#69806C] font-['Iceland'] text-sm rounded hover:bg-[#69806C] hover:text-white transition">
@@ -267,7 +499,7 @@ export default function OrderHubPage() {
                           </button>
                         </Link>
                       )}
-                      <Link href="/menu">
+                      <Link href="/home">
                         <button className="px-4 py-2 border border-gray-300 text-gray-600 font-['Iceland'] text-sm rounded hover:bg-gray-100 transition">
                           Order Again
                         </button>
@@ -278,7 +510,7 @@ export default function OrderHubPage() {
               </div>
             )}
 
-            {/* Loyalty Points Summary (if logged in) */}
+            {/* Loyalty Summary */}
             {user && (
               <div className="mt-8 p-6 bg-gradient-to-r from-[#69806C] to-[#947E5A] rounded-lg text-white">
                 <h4 className="text-xl font-['Iceland'] mb-2">Your Rewards</h4>
@@ -302,7 +534,7 @@ export default function OrderHubPage() {
           </div>
         )}
 
-        {/* Not Logged In Message for History Tab */}
+        {/* Not Logged In */}
         {activeTab === 'history' && !isAuthenticated() && (
           <div className="bg-white rounded-xl shadow-lg p-12 text-center">
             <div className="text-6xl mb-4">🔒</div>

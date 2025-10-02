@@ -1,4 +1,4 @@
-// src/pages/admin/data-management/index.tsx
+// src/pages/admin/data-management/index.tsx - CSV Export for Menu & Review Stats
 
 'use client';
 
@@ -6,7 +6,6 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { api, isAdmin, getCurrentUser } from '@/utils/api';
 import { useRouter } from 'next/router';
-
 
 interface MenuData {
   flavors: Array<{ name: string; price: number; active: boolean }>;
@@ -21,6 +20,7 @@ interface Stats {
   totalReviews: number;
   averageRating: number;
   activeCodes: number;
+  ratingDistribution?: { [key: string]: number };
 }
 
 export default function DataManagementPage() {
@@ -64,7 +64,8 @@ export default function DataManagementPage() {
     totalRevenue: 0,
     totalReviews: 0,
     averageRating: 0,
-    activeCodes: 0
+    activeCodes: 0,
+    ratingDistribution: {}
   });
 
   useEffect(() => {
@@ -80,9 +81,18 @@ export default function DataManagementPage() {
     setLoading(true);
     try {
       if (activeTab === 'stats') {
-        const orderStats = await api.getOrderStats();
-        const reviewStats = await api.getReviews(1, 1);
-        const usersData = await api.getAllUsers();
+         
+        console.log('📊 Fetching statistics from MongoDB...');
+         
+         const [orderStats, reviewStats, usersData] = await Promise.all([
+          api.getOrderStats(),
+          api.getReviews(1, 1),
+          api.getAllUsers()
+        ]);
+        
+        console.log('Order Stats:', orderStats);
+        console.log('Review Stats:', reviewStats);
+        console.log('Users Data:', usersData);
         
         setStats({
           totalUsers: usersData.users?.length || 0,
@@ -90,12 +100,13 @@ export default function DataManagementPage() {
           totalRevenue: orderStats.todayRevenue || 0,
           totalReviews: reviewStats.totalReviews || 0,
           averageRating: reviewStats.stats?.average || 0,
-          activeCodes: 10
-        });
+          activeCodes: 10,
+          ratingDistribution: reviewStats.distribution || {}
+        }); console.log('✅ Statistics loaded successfully');
       } else if (activeTab === 'users') {
         await loadAllUsers();
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to fetch data:', error);
     } finally {
       setLoading(false);
@@ -104,15 +115,22 @@ export default function DataManagementPage() {
 
   const loadAllUsers = async () => {
     try {
+      console.log('👥 Loading users from MongoDB...');
+      
       const filters: any = {};
       if (filterRole) filters.role = filterRole;
       if (filterStatus) filters.isActive = filterStatus;
       if (searchTerm) filters.search = searchTerm;
       
+      console.log('🔍 Filters:', filters);
+      
       const result = await api.getAllUsers(filters);
+      console.log('✅ Users loaded:', result.users?.length || 0);
+      
       setUsers(result.users || []);
-    } catch (error) {
-      console.error('Failed to load users:', error);
+    } catch (error: any) {
+      console.error('❌ Failed to load users:', error);
+      alert('Failed to load users from database: ' + error.message);
       setUsers([]);
     }
   };
@@ -195,25 +213,60 @@ export default function DataManagementPage() {
     }
   };
 
-  const exportData = (type: string) => {
-    const data = type === 'menu' ? menuData : stats;
-    const dataStr = JSON.stringify(data, null, 2);
-    const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
+  // ✅ Export Menu Data as CSV
+  const exportMenuCSV = () => {
+    let csv = 'Category,Name,Price,Status\n';
     
-    const exportFileDefaultName = `bingsu_${type}_${new Date().toISOString().split('T')[0]}.json`;
+    // Flavors
+    menuData.flavors.forEach(flavor => {
+      csv += `Flavor,${flavor.name},${flavor.price},${flavor.active ? 'Active' : 'Inactive'}\n`;
+    });
+    
+    // Toppings
+    menuData.toppings.forEach(topping => {
+      csv += `Topping,${topping.name},${topping.price},${topping.active ? 'Active' : 'Inactive'}\n`;
+    });
+    
+    // Sizes
+    csv += '\nSize,Additional Price\n';
+    menuData.sizes.forEach(size => {
+      csv += `${size.size},${size.price}\n`;
+    });
+    
+    downloadCSV(csv, 'menu_data');
+  };
+
+  // ✅ Export Review Statistics as CSV
+  const exportReviewStatsCSV = () => {
+    let csv = 'Review Statistics Report\n\n';
+    csv += 'Metric,Value\n';
+    csv += `Total Reviews,${stats.totalReviews}\n`;
+    csv += `Average Rating,${stats.averageRating.toFixed(2)}\n`;
+    csv += `Total Orders,${stats.totalOrders}\n`;
+    csv += `Total Revenue,${stats.totalRevenue}\n\n`;
+    
+    csv += 'Rating Distribution\n';
+    csv += 'Stars,Count\n';
+    
+    if (stats.ratingDistribution) {
+      for (let i = 5; i >= 1; i--) {
+        csv += `${i} Stars,${stats.ratingDistribution[i] || 0}\n`;
+      }
+    }
+    
+    downloadCSV(csv, 'review_statistics');
+  };
+
+  // ✅ Helper function to download CSV
+  const downloadCSV = (csvContent: string, filename: string) => {
+    const dataUri = 'data:text/csv;charset=utf-8,\uFEFF' + encodeURIComponent(csvContent);
+    const exportFileDefaultName = `${filename}_${new Date().toISOString().split('T')[0]}.csv`;
     
     const linkElement = document.createElement('a');
     linkElement.setAttribute('href', dataUri);
     linkElement.setAttribute('download', exportFileDefaultName);
     linkElement.click();
   };
-
-  
- 
-      
-
-        
-   
 
   return (
     <div className="min-h-screen bg-[#EBE6DE]">
@@ -268,10 +321,10 @@ export default function DataManagementPage() {
               <div className="flex justify-between items-center mb-4">
                 <h3 className="text-2xl text-[#69806C] font-['Iceland']">Shaved Ice Flavors</h3>
                 <button
-                  onClick={() => exportData('menu')}
-                  className="px-4 py-2 bg-blue-500 text-white rounded font-['Iceland'] hover:bg-blue-600"
+                  onClick={exportMenuCSV}
+                  className="px-4 py-2 bg-[#69806C] text-white rounded font-['Iceland'] hover:bg-[#5a6e5e] transition"
                 >
-                  Export Data
+                  📊 Export Menu as CSV
                 </button>
               </div>
               <div className="overflow-x-auto">
@@ -566,14 +619,41 @@ export default function DataManagementPage() {
               </div>
             </div>
 
-            
-              
-              
-                
-                
+            {/* Review Statistics */}
+            {stats.ratingDistribution && (
+              <div className="bg-white rounded-xl shadow-lg p-6">
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-2xl text-[#69806C] font-['Iceland']">Review Rating Distribution</h3>
+                  <button
+                    onClick={exportReviewStatsCSV}
+                    className="px-4 py-2 bg-[#69806C] text-white rounded font-['Iceland'] hover:bg-[#5a6e5e] transition"
+                  >
+                    📊 Export Review Stats as CSV
+                  </button>
+                </div>
+                <div className="space-y-3">
+                  {[5, 4, 3, 2, 1].map((rating) => (
+                    <div key={rating} className="flex items-center gap-4">
+                      <span className="font-['Iceland'] text-lg w-16">{rating} ⭐</span>
+                      <div className="flex-1 bg-gray-200 rounded-full h-6">
+                        <div
+                          className="bg-yellow-400 h-6 rounded-full transition-all"
+                          style={{
+                            width: `${stats.totalReviews > 0 
+                              ? ((stats.ratingDistribution[rating] || 0) / stats.totalReviews) * 100 
+                              : 0}%`
+                          }}
+                        ></div>
+                      </div>
+                      <span className="font-['Iceland'] text-lg w-12 text-right">
+                        {stats.ratingDistribution[rating] || 0}
+                      </span>
+                    </div>
+                  ))}
+                </div>
               </div>
-            
-          
+            )}
+          </div>
         )}
       </div>
 
