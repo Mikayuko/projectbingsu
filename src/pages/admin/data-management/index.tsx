@@ -601,10 +601,7 @@ export default function DataManagementPage() {
                 <h4 className="text-gray-600 font-['Iceland'] mb-2">Total Orders Today</h4>
                 <p className="text-3xl font-bold text-[#69806C]">{stats.totalOrders}</p>
               </div>
-              <div className="bg-white rounded-xl shadow-lg p-6">
-                <h4 className="text-gray-600 font-['Iceland'] mb-2">Today's Revenue</h4>
-                <p className="text-3xl font-bold text-[#69806C]">฿{stats.totalRevenue}</p>
-              </div>
+              
               <div className="bg-white rounded-xl shadow-lg p-6">
                 <h4 className="text-gray-600 font-['Iceland'] mb-2">Total Reviews</h4>
                 <p className="text-3xl font-bold text-[#69806C]">{stats.totalReviews}</p>

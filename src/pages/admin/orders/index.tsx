@@ -109,10 +109,7 @@ export default function AdminOrdersPage() {
           <p className="text-gray-600 text-sm">Today's Orders</p>
           <p className="text-3xl font-bold text-[#69806C]">{stats.todayOrders}</p>
         </div>
-        <div className="bg-white rounded-lg shadow p-4">
-          <p className="text-gray-600 text-sm">Today's Revenue</p>
-          <p className="text-3xl font-bold text-[#69806C]">฿{stats.todayRevenue}</p>
-        </div>
+        
         <div className="bg-white rounded-lg shadow p-4">
           <p className="text-gray-600 text-sm">Pending Orders</p>
           <p className="text-3xl font-bold text-yellow-600">{stats.pendingOrders}</p>

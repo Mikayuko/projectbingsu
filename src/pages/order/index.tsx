@@ -254,12 +254,7 @@ export default function OrderHubPage() {
                         
                         
                       </label>
-                      <button
-                        onClick={() => trackOrderSilent(trackedOrder.customerCode)}
-                        className="px-4 py-2 bg-[#69806C] text-white rounded hover:bg-[#5a6e5e] font-['Iceland']"
-                      >
-                        Refresh Now
-                      </button>
+                      
                     </div>
                   
                 )}
