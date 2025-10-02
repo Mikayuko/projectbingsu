@@ -12,7 +12,7 @@ const orderRoutes = require('./routes/orders');
 const menuCodeRoutes = require('./routes/menuCodes');
 const reviewRoutes = require('./routes/reviews');
 const userRoutes = require('./routes/users');
-const trackRoutes = require('./routes/track');
+
 
 // Initialize express app
 const app = express();
@@ -69,7 +69,6 @@ app.use('/api/orders', orderRoutes);
 app.use('/api/menu-codes', menuCodeRoutes);
 app.use('/api/reviews', reviewRoutes);
 app.use('/api/users', userRoutes);
-app.post('/api/track', trackRoutes);
 
 
 // Health check endpoint
