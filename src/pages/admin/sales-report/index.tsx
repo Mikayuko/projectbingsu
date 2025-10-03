@@ -1,4 +1,4 @@
-// src/pages/admin/sales-report/index.tsx - CSV Export Only + MongoDB Support
+// src/pages/admin/sales-report/index.tsx - Enhanced with Multiple Top Items & Peak Times
 
 'use client';
 
@@ -25,7 +25,17 @@ interface SalesData {
   avgOrderValue: number;
 }
 
-export default function SalesReportPage() {
+interface TopItem {
+  name: string;
+  count: number;
+}
+
+interface PeakTime {
+  timeRange: string;
+  count: number;
+}
+
+export default function EnhancedSalesReportPage() {
   const router = useRouter();
   const [period, setPeriod] = useState<'today' | 'week' | 'month' | 'all'>('today');
   const [salesData, setSalesData] = useState<SalesData[]>([]);
@@ -35,9 +45,10 @@ export default function SalesReportPage() {
     totalOrders: 0,
     totalRevenue: 0,
     avgOrderValue: 0,
-    bestSellingFlavor: '',
-    bestSellingTopping: '',
-    peakHour: '',
+    topFlavors: [] as TopItem[],
+    topToppings: [] as TopItem[],
+    peakTimes: [] as PeakTime[],
+    topCombinations: [] as { combo: string; count: number }[],
     completionRate: 0
   });
 
@@ -52,27 +63,20 @@ export default function SalesReportPage() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      console.log('📊 Fetching orders from MongoDB...');
-      
-      // ✅ Fetch ALL orders from MongoDB (no filters)
       const result = await api.getAllOrders();
-      console.log('✅ Orders fetched:', result.orders?.length || 0);
-      
       const allOrders = result.orders || [];
       setOrders(allOrders);
-      calculateSalesData(allOrders);
+      calculateEnhancedSalesData(allOrders);
     } catch (error: any) {
-      console.error('❌ Failed to fetch orders:', error);
-      alert('Failed to load sales data from database: ' + error.message);
+      console.error('Failed to fetch orders:', error);
       setOrders([]);
-      calculateSalesData([]);
+      calculateEnhancedSalesData([]);
     } finally {
       setLoading(false);
     }
   };
 
-  const calculateSalesData = (allOrders: Order[]) => {
-    // Filter by period
+  const calculateEnhancedSalesData = (allOrders: Order[]) => {
     const now = new Date();
     const filteredOrders = allOrders.filter(order => {
       const orderDate = new Date(order.createdAt);
@@ -95,9 +99,7 @@ export default function SalesReportPage() {
     const groupedData: { [key: string]: Order[] } = {};
     filteredOrders.forEach(order => {
       const date = new Date(order.createdAt).toLocaleDateString('th-TH');
-      if (!groupedData[date]) {
-        groupedData[date] = [];
-      }
+      if (!groupedData[date]) groupedData[date] = [];
       groupedData[date].push(order);
     });
 
@@ -111,44 +113,63 @@ export default function SalesReportPage() {
 
     setSalesData(dailySales);
 
-    // Calculate summary
+    // Calculate totals
     const totalOrders = filteredOrders.length;
     const totalRevenue = filteredOrders.reduce((sum, order) => sum + (order.pricing?.total || 0), 0);
-    
-    // Best selling flavor
+
+    // ✅ Top Flavors - Show ALL items with highest count
     const flavorCount: { [key: string]: number } = {};
     filteredOrders.forEach(order => {
       const flavor = order.shavedIce?.flavor || 'Unknown';
       flavorCount[flavor] = (flavorCount[flavor] || 0) + 1;
     });
-    const bestSellingFlavor = Object.entries(flavorCount).reduce(
-      (a, b) => b[1] > a[1] ? b : a, 
-      ['N/A', 0]
-    )[0];
+    
+    const maxFlavorCount = Math.max(...Object.values(flavorCount), 0);
+    const topFlavors = Object.entries(flavorCount)
+      .filter(([_, count]) => count === maxFlavorCount && maxFlavorCount > 0)
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count);
 
-    // Best selling topping
+    // ✅ Top Toppings - Show ALL items with highest count
     const toppingCount: { [key: string]: number } = {};
     filteredOrders.forEach(order => {
       order.toppings?.forEach(topping => {
         toppingCount[topping.name] = (toppingCount[topping.name] || 0) + 1;
       });
     });
-    const bestSellingTopping = Object.entries(toppingCount).reduce(
-      (a, b) => b[1] > a[1] ? b : a,
-      ['N/A', 0]
-    )[0];
+    
+    const maxToppingCount = Math.max(...Object.values(toppingCount), 0);
+    const topToppings = Object.entries(toppingCount)
+      .filter(([_, count]) => count === maxToppingCount && maxToppingCount > 0)
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count);
 
-    // Peak hour
+    // ✅ Peak Times - Show ALL time ranges with highest count
     const hourCount: { [key: string]: number } = {};
     filteredOrders.forEach(order => {
       const hour = new Date(order.createdAt).getHours();
-      const hourStr = `${hour}:00-${hour + 1}:00`;
-      hourCount[hourStr] = (hourCount[hourStr] || 0) + 1;
+      const timeRange = `${hour.toString().padStart(2, '0')}:00-${(hour + 1).toString().padStart(2, '0')}:00`;
+      hourCount[timeRange] = (hourCount[timeRange] || 0) + 1;
     });
-    const peakHour = Object.entries(hourCount).reduce(
-      (a, b) => b[1] > a[1] ? b : a,
-      ['N/A', 0]
-    )[0];
+    
+    const maxHourCount = Math.max(...Object.values(hourCount), 0);
+    const peakTimes = Object.entries(hourCount)
+      .filter(([_, count]) => count === maxHourCount && maxHourCount > 0)
+      .map(([timeRange, count]) => ({ timeRange, count }))
+      .sort((a, b) => b.count - a.count);
+
+    // Top Combinations
+    const comboCount: { [key: string]: number } = {};
+    filteredOrders.forEach(order => {
+      const toppings = order.toppings?.map(t => t.name).sort().join(', ') || 'No toppings';
+      const combo = `${order.shavedIce?.flavor} + ${toppings}`;
+      comboCount[combo] = (comboCount[combo] || 0) + 1;
+    });
+    
+    const topCombinations = Object.entries(comboCount)
+      .map(([combo, count]) => ({ combo, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5);
 
     // Completion rate
     const completedOrders = filteredOrders.filter(order => order.status === 'Completed').length;
@@ -158,34 +179,44 @@ export default function SalesReportPage() {
       totalOrders,
       totalRevenue,
       avgOrderValue: totalOrders > 0 ? totalRevenue / totalOrders : 0,
-      bestSellingFlavor,
-      bestSellingTopping,
-      peakHour,
+      topFlavors,
+      topToppings,
+      peakTimes,
+      topCombinations,
       completionRate
     });
   };
 
-  // ✅ Export to CSV only
   const exportToCSV = () => {
     let csv = 'Date,Orders,Revenue,Avg Order Value\n';
     salesData.forEach(data => {
       csv += `${data.date},${data.orders},${data.revenue},${data.avgOrderValue.toFixed(2)}\n`;
     });
     
-    // Add summary
-    csv += '\n';
-    csv += 'Summary\n';
+    csv += '\n\nSummary\n';
     csv += `Period,${period}\n`;
     csv += `Total Orders,${summary.totalOrders}\n`;
     csv += `Total Revenue,${summary.totalRevenue}\n`;
     csv += `Avg Order Value,${summary.avgOrderValue.toFixed(2)}\n`;
-    csv += `Best Flavor,${summary.bestSellingFlavor}\n`;
-    csv += `Best Topping,${summary.bestSellingTopping}\n`;
-    csv += `Peak Hour,${summary.peakHour}\n`;
-    csv += `Completion Rate,${summary.completionRate.toFixed(1)}%\n`;
+    csv += `Completion Rate,${summary.completionRate.toFixed(1)}%\n\n`;
     
-    const dataUri = 'data:text/csv;charset=utf-8,'+ encodeURIComponent(csv);
-    const exportFileDefaultName = `sales_report_${period}_${new Date().toISOString().split('T')[0]}.csv`;
+    csv += 'Top Flavors\n';
+    summary.topFlavors.forEach((f, i) => {
+      csv += `${i + 1}. ${f.name},${f.count}\n`;
+    });
+    
+    csv += '\nTop Toppings\n';
+    summary.topToppings.forEach((t, i) => {
+      csv += `${i + 1}. ${t.name},${t.count}\n`;
+    });
+    
+    csv += '\nPeak Times\n';
+    summary.peakTimes.forEach((p, i) => {
+      csv += `${i + 1}. ${p.timeRange},${p.count}\n`;
+    });
+    
+    const dataUri = 'data:text/csv;charset=utf-8,\uFEFF' + encodeURIComponent(csv);
+    const exportFileDefaultName = `enhanced_sales_report_${period}_${new Date().toISOString().split('T')[0]}.csv`;
     
     const linkElement = document.createElement('a');
     linkElement.setAttribute('href', dataUri);
@@ -200,12 +231,12 @@ export default function SalesReportPage() {
         <Link href="/admin">
           <div className="text-white text-2xl hover:opacity-80 cursor-pointer">{'<'}</div>
         </Link>
-        <h1 className="ml-6 text-white text-3xl">Sales Report</h1>
+        <h1 className="ml-6 text-white text-3xl">Enhanced Sales Report</h1>
       </div>
 
       <div className="max-w-7xl mx-auto p-6">
         {/* Period Selector */}
-        <div className="bg-white rounded-lg shadow-md p-4 mb-6">
+        <div className="bg-white rounded-lg shadow-md p-1 inline-flex mb-8">
           <div className="flex gap-2">
             {(['today', 'week', 'month', 'all'] as const).map(p => (
               <button
@@ -251,25 +282,113 @@ export default function SalesReportPage() {
               </div>
             </div>
 
-            {/* Insights */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-              <div className="bg-gradient-to-r from-[#69806C] to-[#947E5A] rounded-lg shadow-lg p-6 text-white">
-                <p className="text-white/80 text-sm mb-2">Best Selling Flavor</p>
-                <p className="text-2xl font-bold">{summary.bestSellingFlavor}</p>
+            {/* ✅ Enhanced Insights - Multiple Top Items */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+              {/* Top Flavors */}
+              <div className="bg-gradient-to-br from-[#69806C] to-[#947E5A] rounded-lg shadow-xl p-6 text-white">
+                <h3 className="text-2xl font-bold mb-4 flex items-center gap-2">
+                  🍧 Top Flavors
+                </h3>
+                {summary.topFlavors.length > 0 ? (
+                  <div className="space-y-3">
+                    {summary.topFlavors.map((flavor, idx) => (
+                      <div key={idx} className="bg-white/20 backdrop-blur-sm rounded-lg p-3">
+                        <div className="flex justify-between items-center">
+                          <span className="text-lg font-bold">#{idx + 1} {flavor.name}</span>
+                          <span className="text-2xl font-bold">{flavor.count}</span>
+                        </div>
+                        <p className="text-sm text-white/80 mt-1">orders</p>
+                      </div>
+                    ))}
+                    {summary.topFlavors.length > 1 && (
+                      <p className="text-xs text-white/70 italic mt-2">
+                        🔥 {summary.topFlavors.length} flavors tied for #1!
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-white/70">No data available</p>
+                )}
               </div>
-              <div className="bg-gradient-to-r from-[#947E5A] to-[#69806C] rounded-lg shadow-lg p-6 text-white">
-                <p className="text-white/80 text-sm mb-2">Top Topping</p>
-                <p className="text-2xl font-bold">{summary.bestSellingTopping}</p>
+
+              {/* Top Toppings */}
+              <div className="bg-gradient-to-br from-[#947E5A] to-[#69806C] rounded-lg shadow-xl p-6 text-white">
+                <h3 className="text-2xl font-bold mb-4 flex items-center gap-2">
+                  🍓 Top Toppings
+                </h3>
+                {summary.topToppings.length > 0 ? (
+                  <div className="space-y-3">
+                    {summary.topToppings.map((topping, idx) => (
+                      <div key={idx} className="bg-white/20 backdrop-blur-sm rounded-lg p-3">
+                        <div className="flex justify-between items-center">
+                          <span className="text-lg font-bold">#{idx + 1} {topping.name}</span>
+                          <span className="text-2xl font-bold">{topping.count}</span>
+                        </div>
+                        <p className="text-sm text-white/80 mt-1">orders</p>
+                      </div>
+                    ))}
+                    {summary.topToppings.length > 1 && (
+                      <p className="text-xs text-white/70 italic mt-2">
+                        🔥 {summary.topToppings.length} toppings tied for #1!
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-white/70">No data available</p>
+                )}
               </div>
-              <div className="bg-gradient-to-r from-[#69806C] to-[#947E5A] rounded-lg shadow-lg p-6 text-white">
-                <p className="text-white/80 text-sm mb-2">Peak Hour</p>
-                <p className="text-2xl font-bold">{summary.peakHour}</p>
+
+              {/* Peak Times */}
+              <div className="bg-gradient-to-br from-[#69806C] to-[#947E5A] rounded-lg shadow-xl p-6 text-white">
+                <h3 className="text-2xl font-bold mb-4 flex items-center gap-2">
+                  ⏰ Peak Times
+                </h3>
+                {summary.peakTimes.length > 0 ? (
+                  <div className="space-y-3">
+                    {summary.peakTimes.map((peak, idx) => (
+                      <div key={idx} className="bg-white/20 backdrop-blur-sm rounded-lg p-3">
+                        <div className="flex justify-between items-center">
+                          <span className="text-lg font-bold">{peak.timeRange}</span>
+                          <span className="text-2xl font-bold">{peak.count}</span>
+                        </div>
+                        <p className="text-sm text-white/80 mt-1">orders</p>
+                      </div>
+                    ))}
+                    {summary.peakTimes.length > 1 && (
+                      <p className="text-xs text-white/70 italic mt-2">
+                        🔥 {summary.peakTimes.length} time slots tied for peak!
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-white/70">No data available</p>
+                )}
               </div>
             </div>
 
+            {/* Top Combinations */}
+            <div className="bg-white rounded-xl shadow-lg p-6 mb-6">
+              <h3 className="text-2xl text-[#69806C] mb-4">🎯 Top Flavor + Topping Combinations</h3>
+              {summary.topCombinations.length > 0 ? (
+                <div className="space-y-3">
+                  {summary.topCombinations.map((combo, idx) => (
+                    <div key={idx} className="flex justify-between items-center border-b pb-2">
+                      <div className="flex items-center gap-3">
+                        <span className="text-2xl font-bold text-[#947E5A]">#{idx + 1}</span>
+                        <span className="text-lg">{combo.combo}</span>
+                      </div>
+                      <span className="text-xl font-bold text-[#69806C]">{combo.count} orders</span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-gray-500">No combination data available</p>
+              )}
+            </div>
+
             {/* Daily Sales Table */}
-            <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
-              <h3 className="text-2xl text-[#69806C] mb-4">Daily Sales Breakdown</h3>
+            <div className="bg-white rounded-xl shadow-lg p-6 mb-6">
+              <h3 className="text-2xl text-[#69806C] mb-4">📊 Daily Sales Breakdown</h3>
               
               {salesData.length === 0 ? (
                 <p className="text-gray-500 text-center py-8">No sales data for the selected period</p>
@@ -307,7 +426,7 @@ export default function SalesReportPage() {
               )}
             </div>
 
-            {/* Export Button - CSV Only */}
+            {/* Export Button */}
             <div className="flex justify-center">
               <button
                 onClick={exportToCSV}
