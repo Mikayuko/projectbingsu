@@ -1,4 +1,4 @@
-// src/pages/admin/orders/index.tsx - MongoDB Only
+// src/pages/admin/orders/index.tsx - Real-time + Notifications (ไม่มีเสียง)
 
 'use client';
 
@@ -29,11 +29,34 @@ export default function AdminOrdersPage() {
     pendingOrders: 0,
     popularFlavor: ''
   });
+  
+  // ✅ Real-time state
+  const [autoRefresh, setAutoRefresh] = useState(true);
+  const [lastRefresh, setLastRefresh] = useState(new Date());
+  const [newOrdersCount, setNewOrdersCount] = useState(0);
 
   useEffect(() => {
     fetchOrders();
     fetchStats();
+    requestNotificationPermission();
   }, [filter]);
+
+  // ✅ Auto-refresh every 10 seconds
+  useEffect(() => {
+    if (!autoRefresh) return;
+
+    const interval = setInterval(() => {
+      fetchOrdersSilent();
+    }, 10000);
+
+    return () => clearInterval(interval);
+  }, [autoRefresh, filter, orders]);
+
+  const requestNotificationPermission = async () => {
+    if ('Notification' in window && Notification.permission === 'default') {
+      await Notification.requestPermission();
+    }
+  };
 
   const fetchOrders = async () => {
     setLoading(true);
@@ -41,10 +64,43 @@ export default function AdminOrdersPage() {
       const filters = filter !== 'all' ? { status: filter } : {};
       const result = await api.getAllOrders(filters);
       setOrders(result.orders || []);
+      setLastRefresh(new Date());
     } catch (error) {
       console.error('Failed to fetch orders:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // ✅ Silent refresh (ไม่แสดง loading)
+  const fetchOrdersSilent = async () => {
+    try {
+      const filters = filter !== 'all' ? { status: filter } : {};
+      const result = await api.getAllOrders(filters);
+      const newOrders = result.orders || [];
+      
+      // ตรวจสอบว่ามี order ใหม่หรือไม่
+      const oldIds = new Set(orders.map(o => o._id));
+      const addedOrders = newOrders.filter((o: Order) => !oldIds.has(o._id));
+      
+      if (addedOrders.length > 0) {
+        setNewOrdersCount(prev => prev + addedOrders.length);
+        
+        // ✅ แจ้งเตือน (ไม่มีเสียง)
+        if ('Notification' in window && Notification.permission === 'granted') {
+          new Notification('🍧 New Bingsu Order!', {
+            body: `${addedOrders.length} new order(s) received`,
+            icon: '/favicon.ico',
+            silent: true
+          });
+        }
+      }
+      
+      setOrders(newOrders);
+      setLastRefresh(new Date());
+      await fetchStats();
+    } catch (error) {
+      console.error('Silent refresh failed:', error);
     }
   };
 
@@ -73,6 +129,11 @@ export default function AdminOrdersPage() {
     }
   };
 
+  const handleRefreshNow = () => {
+    setNewOrdersCount(0);
+    fetchOrders();
+  };
+
   const getStatusColor = (status: string) => {
     const colors = {
       'Pending': 'text-yellow-600 bg-yellow-50',
@@ -95,15 +156,43 @@ export default function AdminOrdersPage() {
 
   return (
     <div className="min-h-screen bg-[#EBE6DE]">
-      {/* Header */}
       <div className="w-full h-[80px] bg-[#69806C] flex items-center px-6 shadow-lg">
         <Link href="/admin">
           <div className="text-white text-2xl hover:opacity-80 cursor-pointer">{'<'}</div>
         </Link>
         <h1 className="ml-6 text-white text-3xl">Order Management</h1>
+        
+        {/* ✅ Refresh Controls */}
+        <div className="ml-auto flex items-center gap-4">
+          <label className="flex items-center gap-2 text-white cursor-pointer">
+            <input
+              type="checkbox"
+              checked={autoRefresh}
+              onChange={(e) => setAutoRefresh(e.target.checked)}
+              className="w-4 h-4"
+            />
+            <span className="text-sm">Auto-refresh (10s)</span>
+          </label>
+          
+          <button
+            onClick={handleRefreshNow}
+            className="px-4 py-2 bg-white/20 hover:bg-white/30 rounded-lg text-white flex items-center gap-2 transition"
+          >
+            <span>🔄</span>
+            <span>Refresh Now</span>
+            {newOrdersCount > 0 && (
+              <span className="px-2 py-1 bg-red-500 text-white text-xs rounded-full animate-pulse">
+                +{newOrdersCount}
+              </span>
+            )}
+          </button>
+          
+          <p className="text-white/70 text-sm">
+            Last: {lastRefresh.toLocaleTimeString('th-TH')}
+          </p>
+        </div>
       </div>
 
-      {/* Stats Cards */}
       <div className="p-6 grid grid-cols-1 md:grid-cols-4 gap-4 max-w-7xl mx-auto">
         <div className="bg-white rounded-lg shadow p-4">
           <p className="text-gray-600 text-sm">Today's Orders</p>
@@ -114,13 +203,18 @@ export default function AdminOrdersPage() {
           <p className="text-gray-600 text-sm">Pending Orders</p>
           <p className="text-3xl font-bold text-yellow-600">{stats.pendingOrders}</p>
         </div>
+        
+        <div className="bg-white rounded-lg shadow p-4">
+          <p className="text-gray-600 text-sm">Today's Revenue</p>
+          <p className="text-3xl font-bold text-[#69806C]">฿{stats.todayRevenue}</p>
+        </div>
+        
         <div className="bg-white rounded-lg shadow p-4">
           <p className="text-gray-600 text-sm">Popular Flavor</p>
           <p className="text-2xl font-bold text-[#69806C]">{stats.popularFlavor}</p>
         </div>
       </div>
 
-      {/* Filter Tabs */}
       <div className="p-6 max-w-7xl mx-auto">
         <div className="flex gap-2 mb-6">
           {['all', 'Pending', 'Preparing', 'Ready', 'Completed'].map((status) => (
@@ -138,7 +232,6 @@ export default function AdminOrdersPage() {
           ))}
         </div>
 
-        {/* Orders Grid */}
         {loading ? (
           <div className="text-center py-12">
             <p className="text-gray-500 text-xl">Loading orders...</p>
@@ -154,7 +247,6 @@ export default function AdminOrdersPage() {
                 key={order._id}
                 className="bg-white rounded-lg shadow-lg p-6 hover:shadow-xl transition"
               >
-                {/* Order Header */}
                 <div className="flex justify-between items-start mb-4">
                   <div>
                     <p className="text-2xl font-bold text-[#69806C]">
@@ -169,7 +261,6 @@ export default function AdminOrdersPage() {
                   </span>
                 </div>
 
-                {/* Order Details */}
                 <div className="border-t border-b py-3 mb-3">
                   <div className="grid grid-cols-2 gap-2 text-sm">
                     <div>
@@ -197,7 +288,6 @@ export default function AdminOrdersPage() {
                   )}
                 </div>
 
-                {/* Price and Time */}
                 <div className="flex justify-between items-center mb-4">
                   <p className="text-2xl font-bold text-[#69806C]">
                     ฿{order.pricing.total}
@@ -207,7 +297,6 @@ export default function AdminOrdersPage() {
                   </p>
                 </div>
 
-                {/* Action Buttons */}
                 <div className="flex gap-2">
                   {order.status !== 'Completed' && order.status !== 'Cancelled' && (
                     <>

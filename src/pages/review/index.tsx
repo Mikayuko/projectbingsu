@@ -1,11 +1,10 @@
-// This artifact is for review page, not signup. Will update signup separately.
-
+// src/pages/review/index.tsx
 'use client';
 
 import { useState, useEffect } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
-import { api } from '@/utils/api';
+import { api, isAuthenticated } from '@/utils/api';
 import HeaderExclude from '../../components/HeaderExclude';
 
 interface CustomerReview {
@@ -14,6 +13,8 @@ interface CustomerReview {
   rating: number;
   comment: string;
   createdAt?: string;
+  shavedIceFlavor?: string;
+  toppings?: string[];
 }
 
 export default function ReviewPage() {
@@ -23,9 +24,13 @@ export default function ReviewPage() {
   const [customerReviews, setCustomerReviews] = useState<CustomerReview[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [canReview, setCanReview] = useState(false);
+  const [completedOrders, setCompletedOrders] = useState<any[]>([]);
+  const [selectedOrder, setSelectedOrder] = useState<any>(null);
 
   useEffect(() => {
     fetchReviews();
+    checkIfCanReview();
   }, []);
 
   const fetchReviews = async () => {
@@ -36,22 +41,50 @@ export default function ReviewPage() {
         customerName: r.customerName || 'Anonymous',
         rating: r.rating,
         comment: r.comment,
-        createdAt: r.createdAt
+        createdAt: r.createdAt,
+        shavedIceFlavor: r.shavedIceFlavor,
+        toppings: r.toppings
       }));
       setCustomerReviews(formattedReviews);
     } catch (error) {
       console.error('Failed to fetch reviews:', error);
-      // Use default reviews if API fails
-      setCustomerReviews([
-        { customerName: 'Alice', rating: 5, comment: 'Best shaved ice ever! The mango flavor was amazing.' },
-        { customerName: 'Bob', rating: 4, comment: 'Great taste, loved the toppings!' },
-        { customerName: 'Charlie', rating: 3, comment: 'It was good, but the ice melted a bit too fast.' },
-      ]);
+      setCustomerReviews([]);
+    }
+  };
+
+  const checkIfCanReview = async () => {
+    try {
+      if (!isAuthenticated()) {
+        setCanReview(false);
+        return;
+      }
+
+      const result = await api.getMyOrders();
+      const completed = result.orders.filter((o: any) => o.status === 'Completed');
+      
+      if (completed.length > 0) {
+        setCanReview(true);
+        setCompletedOrders(completed);
+      } else {
+        setCanReview(false);
+      }
+    } catch (error) {
+      console.error('Failed to check orders:', error);
+      setCanReview(false);
     }
   };
 
   const handleSubmit = async () => {
-    // ✅ Validation
+    if (!canReview) {
+      setError('You must complete an order before leaving a review');
+      return;
+    }
+
+    if (!selectedOrder) {
+      setError('Please select an order to review');
+      return;
+    }
+
     if (rating === 0) {
       setError('Please select a rating');
       return;
@@ -71,42 +104,28 @@ export default function ReviewPage() {
     setError('');
 
     try {
-      console.log('Submitting review:', { rating, comment: review });
-
-      // ✅ Submit to MongoDB API
       await api.createReview({
         rating,
         comment: review.trim(),
+        orderId: selectedOrder._id,
+        shavedIceFlavor: selectedOrder.shavedIce.flavor,
+        toppings: selectedOrder.toppings.map((t: any) => t.name)
       });
 
-      console.log('Review submitted successfully');
-      
-      // ✅ Show success
       setSubmitted(true);
-      
-      // ✅ Refresh reviews
       await fetchReviews();
       
-      // ✅ Reset form after 2 seconds
       setTimeout(() => {
         setSubmitted(false);
         setRating(0);
         setReview('');
-      }, 2000);
+        setSelectedOrder(null);
+        checkIfCanReview();
+      }, 3000);
 
     } catch (error: any) {
       console.error('Failed to submit review:', error);
       setError(error.message || 'Failed to submit review. Please try again.');
-      
-      // Still show success if it's just a display issue
-      if (error.message && error.message.includes('fetch')) {
-        setSubmitted(true);
-        setTimeout(() => {
-          setSubmitted(false);
-          setRating(0);
-          setReview('');
-        }, 2000);
-      }
     } finally {
       setLoading(false);
     }
@@ -149,6 +168,28 @@ export default function ReviewPage() {
         {/* Review Form */}
         {!submitted ? (
           <div className="bg-white/80 border border-[#69806C] rounded-xl shadow-xl p-6 w-full max-w-xl flex flex-col items-center gap-6">
+            {/* Login/Order Required Warning */}
+            {!isAuthenticated() && (
+              <div className="w-full p-4 bg-yellow-50 border-2 border-yellow-400 rounded-lg">
+                <p className="text-yellow-800 font-['Iceland'] text-center">
+                  ⚠️ Please <Link href="/login" className="text-blue-600 underline">login</Link> and complete an order to leave a review
+                </p>
+              </div>
+            )}
+
+            {isAuthenticated() && !canReview && (
+              <div className="w-full p-4 bg-orange-50 border-2 border-orange-400 rounded-lg">
+                <p className="text-orange-800 font-['Iceland'] text-center mb-2">
+                  📦 You need to complete an order first!
+                </p>
+                <Link href="/home">
+                  <button className="w-full mt-2 px-4 py-2 bg-[#69806C] text-white rounded font-['Iceland'] hover:bg-[#5a6e5e]">
+                    Order Now →
+                  </button>
+                </Link>
+              </div>
+            )}
+
             {/* Error Message */}
             {error && (
               <div className="w-full p-3 bg-red-100 border border-red-400 text-red-700 rounded font-['Iceland']">
@@ -156,7 +197,44 @@ export default function ReviewPage() {
               </div>
             )}
 
-            {/* ⭐️ Rating Selector */}
+            {/* Order Selector */}
+            {canReview && completedOrders.length > 0 && (
+              <div className="w-full">
+                <label className="block text-gray-700 font-['Iceland'] mb-2">
+                  Select Order to Review
+                </label>
+                <select
+                  value={selectedOrder?._id || ''}
+                  onChange={(e) => {
+                    const order = completedOrders.find(o => o._id === e.target.value);
+                    setSelectedOrder(order);
+                    setError('');
+                  }}
+                  disabled={loading}
+                  className="w-full p-3 border-2 border-[#69806C] rounded-lg font-['Iceland'] focus:outline-none focus:border-[#5a6e5e]"
+                >
+                  <option value="">Choose an order...</option>
+                  {completedOrders.map((order) => (
+                    <option key={order._id} value={order._id}>
+                      {order.orderId} - {order.shavedIce.flavor} ({new Date(order.createdAt).toLocaleDateString('th-TH')})
+                    </option>
+                  ))}
+                </select>
+                
+                {selectedOrder && (
+                  <div className="mt-2 p-3 bg-blue-50 rounded-lg">
+                    <p className="text-sm text-blue-800 font-['Iceland']">
+                      🍧 <strong>{selectedOrder.shavedIce.flavor}</strong> - Size {selectedOrder.cupSize}
+                    </p>
+                    <p className="text-xs text-blue-700 font-['Iceland']">
+                      Toppings: {selectedOrder.toppings.map((t: any) => t.name).join(', ') || 'None'}
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Rating Selector */}
             <div>
               <p className="text-center text-gray-700 font-['Iceland'] mb-2">
                 Rate your experience
@@ -169,10 +247,10 @@ export default function ReviewPage() {
                       setRating(num);
                       setError('');
                     }}
-                    disabled={loading}
+                    disabled={loading || !canReview}
                     className={`text-4xl ${
                       rating >= num ? 'text-yellow-400' : 'text-gray-400'
-                    } hover:scale-110 transition disabled:opacity-50`}
+                    } hover:scale-110 transition disabled:opacity-50 disabled:cursor-not-allowed`}
                   >
                     ★
                   </button>
@@ -185,7 +263,7 @@ export default function ReviewPage() {
               )}
             </div>
 
-            {/* ✍️ Textarea */}
+            {/* Textarea */}
             <div className="w-full">
               <label className="block text-gray-700 font-['Iceland'] mb-2">
                 Your Review (10-500 characters)
@@ -197,20 +275,20 @@ export default function ReviewPage() {
                   setReview(e.target.value);
                   setError('');
                 }}
-                disabled={loading}
+                disabled={loading || !canReview}
                 rows={5}
                 maxLength={500}
-                className="w-full p-4 border border-[#69806C] rounded-md text-[#543429] font-['Iceland'] placeholder:text-[#A3A3A3] resize-none focus:outline-none focus:border-[#5a6e5e] shadow-inner disabled:opacity-50"
+                className="w-full p-4 border border-[#69806C] rounded-md text-[#543429] font-['Iceland'] placeholder:text-[#A3A3A3] resize-none focus:outline-none focus:border-[#5a6e5e] shadow-inner disabled:opacity-50 disabled:cursor-not-allowed"
               />
               <p className="text-right text-sm text-gray-500 font-['Iceland'] mt-1">
                 {review.length}/500 characters
               </p>
             </div>
 
-            {/* ✅ Submit Button */}
+            {/* Submit Button */}
             <button
               onClick={handleSubmit}
-              disabled={loading || rating === 0 || review.trim().length < 10}
+              disabled={loading || !canReview || rating === 0 || review.trim().length < 10 || !selectedOrder}
               className="w-48 h-14 bg-[#69806C] text-white text-2xl font-['Iceland'] rounded-lg shadow-md hover:bg-[#506256] transition disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading ? 'Submitting...' : 'Submit Review'}
@@ -233,7 +311,7 @@ export default function ReviewPage() {
           </div>
         )}
 
-        {/* 👥 Customer Reviews */}
+        {/* Customer Reviews */}
         <div className="w-full max-w-4xl mx-auto mt-12 mb-20">
           <h2 className="text-3xl text-[#69806C] font-['Iceland'] mb-6">Customer Reviews</h2>
           
@@ -267,6 +345,17 @@ export default function ReviewPage() {
                       </span>
                     )}
                   </div>
+                  
+                  {/* ✅ แสดงว่าสั่งอะไรไป */}
+                  {(r.shavedIceFlavor || r.toppings) && (
+                    <div className="mb-2 p-2 bg-blue-50 rounded text-xs font-['Iceland']">
+                      <span className="text-blue-800">
+                        🍧 Ordered: <strong>{r.shavedIceFlavor}</strong>
+                        {r.toppings && r.toppings.length > 0 && ` + ${r.toppings.join(', ')}`}
+                      </span>
+                    </div>
+                  )}
+                  
                   <p className="text-[#543429] font-['Iceland'] text-base">
                     {r.comment}
                   </p>

@@ -1,4 +1,4 @@
-// src/pages/admin/sales-report/index.tsx - Enhanced with Multiple Top Items & Peak Times
+// src/pages/admin/sales-report/index.tsx - Fixed Complete Version
 
 'use client';
 
@@ -20,6 +20,7 @@ interface Order {
 
 interface SalesData {
   date: string;
+  time: string;
   orders: number;
   revenue: number;
   avgOrderValue: number;
@@ -35,7 +36,7 @@ interface PeakTime {
   count: number;
 }
 
-export default function EnhancedSalesReportPage() {
+export default function SalesReportPage() {
   const router = useRouter();
   const [period, setPeriod] = useState<'today' | 'week' | 'month' | 'all'>('today');
   const [salesData, setSalesData] = useState<SalesData[]>([]);
@@ -66,21 +67,28 @@ export default function EnhancedSalesReportPage() {
       const result = await api.getAllOrders();
       const allOrders = result.orders || [];
       setOrders(allOrders);
-      calculateEnhancedSalesData(allOrders);
+      calculateSalesData(allOrders);
     } catch (error: any) {
       console.error('Failed to fetch orders:', error);
       setOrders([]);
-      calculateEnhancedSalesData([]);
+      calculateSalesData([]);
     } finally {
       setLoading(false);
     }
   };
 
-  const calculateEnhancedSalesData = (allOrders: Order[]) => {
+  const calculateSalesData = (allOrders: Order[]) => {
     const now = new Date();
+    
+    // ✅⭐ กรองเฉพาะ Completed เท่านั้น (ไม่นับ Cancelled, Pending, etc.)
     const filteredOrders = allOrders.filter(order => {
-      const orderDate = new Date(order.createdAt);
+      // ต้องเป็น Completed เท่านั้น
+      if (order.status !== 'Completed') {
+        return false;
+      }
       
+      const orderDate = new Date(order.createdAt);
+        
       switch (period) {
         case 'today':
           return orderDate.toDateString() === now.toDateString();
@@ -95,42 +103,52 @@ export default function EnhancedSalesReportPage() {
       }
     });
 
-    // Group by date
+    // ✅ Group by date AND time
     const groupedData: { [key: string]: Order[] } = {};
     filteredOrders.forEach(order => {
-      const date = new Date(order.createdAt).toLocaleDateString('th-TH');
-      if (!groupedData[date]) groupedData[date] = [];
-      groupedData[date].push(order);
+      const orderDate = new Date(order.createdAt);
+      const dateKey = orderDate.toLocaleDateString('th-TH');
+      const timeKey = orderDate.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
+      const fullKey = `${dateKey} ${timeKey}`;
+      
+      if (!groupedData[fullKey]) groupedData[fullKey] = [];
+      groupedData[fullKey].push(order);
     });
 
-    // Calculate daily sales
-    const dailySales: SalesData[] = Object.entries(groupedData).map(([date, orders]) => ({
-      date,
-      orders: orders.length,
-      revenue: orders.reduce((sum, order) => sum + (order.pricing?.total || 0), 0),
-      avgOrderValue: orders.reduce((sum, order) => sum + (order.pricing?.total || 0), 0) / orders.length
-    })).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    // Calculate daily sales with time
+    const dailySales: SalesData[] = Object.entries(groupedData).map(([dateTime, orders]) => {
+      const [date, time] = dateTime.split(' ');
+      return {
+        date,
+        time,
+        orders: orders.length,
+        revenue: orders.reduce((sum, order) => sum + (order.pricing?.total || 0), 0),
+        avgOrderValue: orders.reduce((sum, order) => sum + (order.pricing?.total || 0), 0) / orders.length
+      };
+    }).sort((a, b) => new Date(`${b.date} ${b.time}`).getTime() - new Date(`${a.date} ${a.time}`).getTime());
 
     setSalesData(dailySales);
 
-    // Calculate totals
     const totalOrders = filteredOrders.length;
     const totalRevenue = filteredOrders.reduce((sum, order) => sum + (order.pricing?.total || 0), 0);
 
-    // ✅ Top Flavors - Show ALL items with highest count
+    // ✅ Top Flavors - คะแนนเท่ากัน = อันดับเดียวกัน
     const flavorCount: { [key: string]: number } = {};
     filteredOrders.forEach(order => {
       const flavor = order.shavedIce?.flavor || 'Unknown';
       flavorCount[flavor] = (flavorCount[flavor] || 0) + 1;
     });
     
-    const maxFlavorCount = Math.max(...Object.values(flavorCount), 0);
     const topFlavors = Object.entries(flavorCount)
-      .filter(([_, count]) => count === maxFlavorCount && maxFlavorCount > 0)
       .map(([name, count]) => ({ name, count }))
-      .sort((a, b) => b.count - a.count);
+      .sort((a, b) => {
+        if (b.count !== a.count) {
+          return b.count - a.count;
+        }
+        return a.name.localeCompare(b.name);
+      });
 
-    // ✅ Top Toppings - Show ALL items with highest count
+    // ✅ Top Toppings - คะแนนเท่ากัน = อันดับเดียวกัน
     const toppingCount: { [key: string]: number } = {};
     filteredOrders.forEach(order => {
       order.toppings?.forEach(topping => {
@@ -138,13 +156,16 @@ export default function EnhancedSalesReportPage() {
       });
     });
     
-    const maxToppingCount = Math.max(...Object.values(toppingCount), 0);
     const topToppings = Object.entries(toppingCount)
-      .filter(([_, count]) => count === maxToppingCount && maxToppingCount > 0)
       .map(([name, count]) => ({ name, count }))
-      .sort((a, b) => b.count - a.count);
+      .sort((a, b) => {
+        if (b.count !== a.count) {
+          return b.count - a.count;
+        }
+        return a.name.localeCompare(b.name);
+      });
 
-    // ✅ Peak Times - Show ALL time ranges with highest count
+    // ✅ Peak Times
     const hourCount: { [key: string]: number } = {};
     filteredOrders.forEach(order => {
       const hour = new Date(order.createdAt).getHours();
@@ -152,9 +173,7 @@ export default function EnhancedSalesReportPage() {
       hourCount[timeRange] = (hourCount[timeRange] || 0) + 1;
     });
     
-    const maxHourCount = Math.max(...Object.values(hourCount), 0);
     const peakTimes = Object.entries(hourCount)
-      .filter(([_, count]) => count === maxHourCount && maxHourCount > 0)
       .map(([timeRange, count]) => ({ timeRange, count }))
       .sort((a, b) => b.count - a.count);
 
@@ -188,9 +207,9 @@ export default function EnhancedSalesReportPage() {
   };
 
   const exportToCSV = () => {
-    let csv = 'Date,Orders,Revenue,Avg Order Value\n';
+    let csv = 'Date,Time,Orders,Revenue,Avg Order Value\n';
     salesData.forEach(data => {
-      csv += `${data.date},${data.orders},${data.revenue},${data.avgOrderValue.toFixed(2)}\n`;
+      csv += `${data.date},${data.time},${data.orders},${data.revenue},${data.avgOrderValue.toFixed(2)}\n`;
     });
     
     csv += '\n\nSummary\n';
@@ -200,23 +219,23 @@ export default function EnhancedSalesReportPage() {
     csv += `Avg Order Value,${summary.avgOrderValue.toFixed(2)}\n`;
     csv += `Completion Rate,${summary.completionRate.toFixed(1)}%\n\n`;
     
-    csv += 'Top Flavors\n';
+    csv += 'Top Flavors (All)\n';
     summary.topFlavors.forEach((f, i) => {
       csv += `${i + 1}. ${f.name},${f.count}\n`;
     });
     
-    csv += '\nTop Toppings\n';
+    csv += '\nTop Toppings (All)\n';
     summary.topToppings.forEach((t, i) => {
       csv += `${i + 1}. ${t.name},${t.count}\n`;
     });
     
-    csv += '\nPeak Times\n';
+    csv += '\nPeak Times (All)\n';
     summary.peakTimes.forEach((p, i) => {
       csv += `${i + 1}. ${p.timeRange},${p.count}\n`;
     });
     
     const dataUri = 'data:text/csv;charset=utf-8,\uFEFF' + encodeURIComponent(csv);
-    const exportFileDefaultName = `enhanced_sales_report_${period}_${new Date().toISOString().split('T')[0]}.csv`;
+    const exportFileDefaultName = `sales_report_${period}_${new Date().toISOString().split('T')[0]}.csv`;
     
     const linkElement = document.createElement('a');
     linkElement.setAttribute('href', dataUri);
@@ -226,16 +245,14 @@ export default function EnhancedSalesReportPage() {
 
   return (
     <div className="min-h-screen bg-[#EBE6DE] font-['Iceland']">
-      {/* Header */}
       <div className="w-full h-[80px] bg-[#69806C] flex items-center px-6 shadow-lg">
         <Link href="/admin">
           <div className="text-white text-2xl hover:opacity-80 cursor-pointer">{'<'}</div>
         </Link>
-        <h1 className="ml-6 text-white text-3xl">Enhanced Sales Report</h1>
+        <h1 className="ml-6 text-white text-3xl">Sales Report</h1>
       </div>
 
       <div className="max-w-7xl mx-auto p-6">
-        {/* Period Selector */}
         <div className="bg-white rounded-lg shadow-md p-1 inline-flex mb-8">
           <div className="flex gap-2">
             {(['today', 'week', 'month', 'all'] as const).map(p => (
@@ -262,7 +279,6 @@ export default function EnhancedSalesReportPage() {
           </div>
         ) : (
           <>
-            {/* Summary Cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
               <div className="bg-white rounded-lg shadow-lg p-6">
                 <p className="text-gray-600 text-sm mb-2">Total Orders</p>
@@ -282,93 +298,80 @@ export default function EnhancedSalesReportPage() {
               </div>
             </div>
 
-            {/* ✅ Enhanced Insights - Multiple Top Items */}
+            {/* Top Insights */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
-              {/* Top Flavors */}
               <div className="bg-gradient-to-br from-[#69806C] to-[#947E5A] rounded-lg shadow-xl p-6 text-white">
-                <h3 className="text-2xl font-bold mb-4 flex items-center gap-2">
-                  🍧 Top Flavors
-                </h3>
+                <h3 className="text-2xl font-bold mb-4">🍧 Top Flavors (All)</h3>
                 {summary.topFlavors.length > 0 ? (
-                  <div className="space-y-3">
-                    {summary.topFlavors.map((flavor, idx) => (
-                      <div key={idx} className="bg-white/20 backdrop-blur-sm rounded-lg p-3">
-                        <div className="flex justify-between items-center">
-                          <span className="text-lg font-bold">#{idx + 1} {flavor.name}</span>
-                          <span className="text-2xl font-bold">{flavor.count}</span>
+                  <div className="space-y-2 max-h-64 overflow-y-auto">
+                    {summary.topFlavors.map((flavor, idx, arr) => {
+                      // ✅ คำนวณอันดับจริง (คะแนนเท่ากัน = อันดับเดียวกัน)
+                      let rank = 1;
+                      for (let i = 0; i < idx; i++) {
+                        if (arr[i].count > flavor.count) {
+                          rank++;
+                        }
+                      }
+                      
+                      return (
+                        <div key={idx} className="bg-white/20 backdrop-blur-sm rounded-lg p-3 flex justify-between items-center">
+                          <span className="font-bold">#{rank} {flavor.name}</span>
+                          <span className="text-xl font-bold">{flavor.count}</span>
                         </div>
-                        <p className="text-sm text-white/80 mt-1">orders</p>
-                      </div>
-                    ))}
-                    {summary.topFlavors.length > 1 && (
-                      <p className="text-xs text-white/70 italic mt-2">
-                        🔥 {summary.topFlavors.length} flavors tied for #1!
-                      </p>
-                    )}
+                      );
+                    })}
                   </div>
                 ) : (
-                  <p className="text-white/70">No data available</p>
+                  <p className="text-white/70">No data</p>
                 )}
               </div>
 
-              {/* Top Toppings */}
               <div className="bg-gradient-to-br from-[#947E5A] to-[#69806C] rounded-lg shadow-xl p-6 text-white">
-                <h3 className="text-2xl font-bold mb-4 flex items-center gap-2">
-                  🍓 Top Toppings
-                </h3>
+                <h3 className="text-2xl font-bold mb-4">🍓 Top Toppings (All)</h3>
                 {summary.topToppings.length > 0 ? (
-                  <div className="space-y-3">
-                    {summary.topToppings.map((topping, idx) => (
-                      <div key={idx} className="bg-white/20 backdrop-blur-sm rounded-lg p-3">
-                        <div className="flex justify-between items-center">
-                          <span className="text-lg font-bold">#{idx + 1} {topping.name}</span>
-                          <span className="text-2xl font-bold">{topping.count}</span>
+                  <div className="space-y-2 max-h-64 overflow-y-auto">
+                    {summary.topToppings.map((topping, idx, arr) => {
+                      // ✅ คำนวณอันดับจริง (คะแนนเท่ากัน = อันดับเดียวกัน)
+                      let rank = 1;
+                      for (let i = 0; i < idx; i++) {
+                        if (arr[i].count > topping.count) {
+                          rank++;
+                        }
+                      }
+                      
+                      return (
+                        <div key={idx} className="bg-white/20 backdrop-blur-sm rounded-lg p-3 flex justify-between items-center">
+                          <span className="font-bold">#{rank} {topping.name}</span>
+                          <span className="text-xl font-bold">{topping.count}</span>
                         </div>
-                        <p className="text-sm text-white/80 mt-1">orders</p>
-                      </div>
-                    ))}
-                    {summary.topToppings.length > 1 && (
-                      <p className="text-xs text-white/70 italic mt-2">
-                        🔥 {summary.topToppings.length} toppings tied for #1!
-                      </p>
-                    )}
+                      );
+                    })}
                   </div>
                 ) : (
-                  <p className="text-white/70">No data available</p>
+                  <p className="text-white/70">No data</p>
                 )}
               </div>
 
-              {/* Peak Times */}
               <div className="bg-gradient-to-br from-[#69806C] to-[#947E5A] rounded-lg shadow-xl p-6 text-white">
-                <h3 className="text-2xl font-bold mb-4 flex items-center gap-2">
-                  ⏰ Peak Times
-                </h3>
+                <h3 className="text-2xl font-bold mb-4">⏰ Peak Times (All)</h3>
                 {summary.peakTimes.length > 0 ? (
-                  <div className="space-y-3">
+                  <div className="space-y-2 max-h-64 overflow-y-auto">
                     {summary.peakTimes.map((peak, idx) => (
-                      <div key={idx} className="bg-white/20 backdrop-blur-sm rounded-lg p-3">
-                        <div className="flex justify-between items-center">
-                          <span className="text-lg font-bold">{peak.timeRange}</span>
-                          <span className="text-2xl font-bold">{peak.count}</span>
-                        </div>
-                        <p className="text-sm text-white/80 mt-1">orders</p>
+                      <div key={idx} className="bg-white/20 backdrop-blur-sm rounded-lg p-3 flex justify-between items-center">
+                        <span className="font-bold">{peak.timeRange}</span>
+                        <span className="text-xl font-bold">{peak.count}</span>
                       </div>
                     ))}
-                    {summary.peakTimes.length > 1 && (
-                      <p className="text-xs text-white/70 italic mt-2">
-                        🔥 {summary.peakTimes.length} time slots tied for peak!
-                      </p>
-                    )}
                   </div>
                 ) : (
-                  <p className="text-white/70">No data available</p>
+                  <p className="text-white/70">No data</p>
                 )}
               </div>
             </div>
 
             {/* Top Combinations */}
             <div className="bg-white rounded-xl shadow-lg p-6 mb-6">
-              <h3 className="text-2xl text-[#69806C] mb-4">🎯 Top Flavor + Topping Combinations</h3>
+              <h3 className="text-2xl text-[#69806C] mb-4">🎯 Top Combinations</h3>
               {summary.topCombinations.length > 0 ? (
                 <div className="space-y-3">
                   {summary.topCombinations.map((combo, idx) => (
@@ -377,27 +380,28 @@ export default function EnhancedSalesReportPage() {
                         <span className="text-2xl font-bold text-[#947E5A]">#{idx + 1}</span>
                         <span className="text-lg">{combo.combo}</span>
                       </div>
-                      <span className="text-xl font-bold text-[#69806C]">{combo.count} orders</span>
+                      <span className="text-xl font-bold text-[#69806C]">{combo.count}</span>
                     </div>
                   ))}
                 </div>
               ) : (
-                <p className="text-gray-500">No combination data available</p>
+                <p className="text-gray-500">No data</p>
               )}
             </div>
 
-            {/* Daily Sales Table */}
+            {/* Daily Sales with Time */}
             <div className="bg-white rounded-xl shadow-lg p-6 mb-6">
-              <h3 className="text-2xl text-[#69806C] mb-4">📊 Daily Sales Breakdown</h3>
+              <h3 className="text-2xl text-[#69806C] mb-4">📊 Sales Breakdown</h3>
               
               {salesData.length === 0 ? (
-                <p className="text-gray-500 text-center py-8">No sales data for the selected period</p>
+                <p className="text-gray-500 text-center py-8">No sales data</p>
               ) : (
                 <div className="overflow-x-auto">
                   <table className="w-full">
                     <thead>
                       <tr className="border-b-2 border-[#69806C]">
                         <th className="text-left py-2 px-4">Date</th>
+                        <th className="text-left py-2 px-4">Time</th>
                         <th className="text-center py-2 px-4">Orders</th>
                         <th className="text-right py-2 px-4">Revenue</th>
                         <th className="text-right py-2 px-4">Avg Order</th>
@@ -407,6 +411,7 @@ export default function EnhancedSalesReportPage() {
                       {salesData.map((data, idx) => (
                         <tr key={idx} className="border-b hover:bg-gray-50">
                           <td className="py-2 px-4">{data.date}</td>
+                          <td className="py-2 px-4">{data.time}</td>
                           <td className="text-center py-2 px-4">{data.orders}</td>
                           <td className="text-right py-2 px-4">฿{data.revenue}</td>
                           <td className="text-right py-2 px-4">฿{data.avgOrderValue.toFixed(2)}</td>
@@ -415,7 +420,7 @@ export default function EnhancedSalesReportPage() {
                     </tbody>
                     <tfoot>
                       <tr className="border-t-2 border-[#69806C] font-bold">
-                        <td className="py-2 px-4">Total</td>
+                        <td className="py-2 px-4" colSpan={2}>Total</td>
                         <td className="text-center py-2 px-4">{summary.totalOrders}</td>
                         <td className="text-right py-2 px-4">฿{summary.totalRevenue}</td>
                         <td className="text-right py-2 px-4">฿{summary.avgOrderValue.toFixed(2)}</td>
@@ -426,14 +431,13 @@ export default function EnhancedSalesReportPage() {
               )}
             </div>
 
-            {/* Export Button */}
             <div className="flex justify-center">
               <button
                 onClick={exportToCSV}
                 disabled={salesData.length === 0}
-                className="px-8 py-3 bg-[#69806C] text-white rounded-lg hover:bg-[#5a6e5e] transition text-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                className="px-8 py-3 bg-[#69806C] text-white rounded-lg hover:bg-[#5a6e5e] transition text-lg disabled:opacity-50"
               >
-                📊 Export as CSV
+                📊 Export CSV
               </button>
             </div>
           </>
