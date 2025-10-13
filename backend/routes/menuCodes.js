@@ -20,7 +20,6 @@ router.post('/generate', authenticate, isAdmin, [
     
     const { cupSize } = req.body;
     
-    // Create new menu code using static method
     const menuCode = await MenuCode.createCode(cupSize, req.user._id);
     
     console.log('✅ Menu code generated:', menuCode.code);
@@ -29,6 +28,7 @@ router.post('/generate', authenticate, isAdmin, [
       message: 'Menu code generated successfully',
       code: menuCode.code,
       cupSize: menuCode.cupSize,
+      maxUsage: menuCode.maxUsage,
       expiresAt: menuCode.expiresAt
     });
   } catch (error) {
@@ -48,7 +48,6 @@ router.post('/validate', [
     const { code } = req.body;
     console.log('🔍 Validating menu code:', code);
     
-    // Find the code (case insensitive)
     const menuCode = await MenuCode.findOne({
       code: code.toUpperCase()
     });
@@ -59,34 +58,29 @@ router.post('/validate', [
       console.log('❌ Code not found in database');
       return res.status(400).json({ 
         valid: false,
-        message: 'Invalid or already used code' 
+        message: 'Invalid code' 
       });
     }
     
-    // Check if already used
-    if (menuCode.isUsed) {
-      console.log('❌ Code already used');
-      return res.status(400).json({ 
-        valid: false,
-        message: 'This code has already been used' 
-      });
-    }
+    const usageCheck = menuCode.canBeUsed();
     
-    // Check if expired
-    if (menuCode.expiresAt < new Date()) {
-      console.log('❌ Code expired');
+    if (!usageCheck.valid) {
+      console.log('❌ Code cannot be used:', usageCheck.reason);
       return res.status(400).json({ 
         valid: false,
-        message: 'Code has expired' 
+        message: usageCheck.reason 
       });
     }
     
     console.log('✅ Code is valid. Cup size:', menuCode.cupSize);
+    console.log(`📊 Remaining uses: ${usageCheck.remainingUses}/${menuCode.maxUsage}`);
     
     res.json({
       valid: true,
       cupSize: menuCode.cupSize,
-      message: 'Code is valid'
+      remainingUses: usageCheck.remainingUses,
+      maxUsage: menuCode.maxUsage,
+      message: `Code is valid. ${usageCheck.remainingUses} uses remaining.`
     });
   } catch (error) {
     console.error('❌ Validation error:', error);
@@ -106,12 +100,14 @@ router.get('/admin/all', authenticate, isAdmin, async (req, res) => {
     const filter = {};
     
     if (status === 'used') {
-      filter.isUsed = true;
+      filter.usageCount = { $gte: 1 };
     } else if (status === 'unused') {
-      filter.isUsed = false;
+      filter.usageCount = 0;
     } else if (status === 'expired') {
-      filter.isUsed = false;
+      filter.usageCount = { $lt: 5 };
       filter.expiresAt = { $lt: new Date() };
+    } else if (status === 'full') {
+      filter.usageCount = { $gte: 5 };
     }
     
     if (cupSize) {
@@ -165,18 +161,22 @@ router.get('/admin/stats', authenticate, isAdmin, async (req, res) => {
       {
         $facet: {
           total: [{ $count: 'count' }],
-          used: [
-            { $match: { isUsed: true } },
+          partiallyUsed: [
+            { $match: { usageCount: { $gte: 1, $lt: 5 } } },
+            { $count: 'count' }
+          ],
+          fullyUsed: [
+            { $match: { usageCount: { $gte: 5 } } },
             { $count: 'count' }
           ],
           unused: [
-            { $match: { isUsed: false } },
+            { $match: { usageCount: 0 } },
             { $count: 'count' }
           ],
           expired: [
             { 
               $match: { 
-                isUsed: false,
+                usageCount: { $lt: 5 },
                 expiresAt: { $lt: new Date() }
               } 
             },
@@ -185,7 +185,8 @@ router.get('/admin/stats', authenticate, isAdmin, async (req, res) => {
           byCupSize: [
             { $group: { 
               _id: '$cupSize',
-              count: { $sum: 1 }
+              count: { $sum: 1 },
+              totalUsage: { $sum: '$usageCount' }
             }}
           ]
         }
@@ -194,7 +195,8 @@ router.get('/admin/stats', authenticate, isAdmin, async (req, res) => {
     
     const result = {
       total: stats[0].total[0]?.count || 0,
-      used: stats[0].used[0]?.count || 0,
+      partiallyUsed: stats[0].partiallyUsed[0]?.count || 0,
+      fullyUsed: stats[0].fullyUsed[0]?.count || 0,
       unused: stats[0].unused[0]?.count || 0,
       expired: stats[0].expired[0]?.count || 0,
       byCupSize: stats[0].byCupSize

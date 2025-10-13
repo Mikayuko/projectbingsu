@@ -3,7 +3,6 @@ const mongoose = require('mongoose');
 const cors = require('cors');
 const dotenv = require('dotenv');
 
-// Load environment variables
 dotenv.config();
 
 // Import routes
@@ -12,42 +11,35 @@ const orderRoutes = require('./routes/orders');
 const menuCodeRoutes = require('./routes/menuCodes');
 const reviewRoutes = require('./routes/reviews');
 const userRoutes = require('./routes/users');
+const stockRoutes = require('./routes/stock');
 
-
-// Initialize express app
 const app = express();
 
-// CORS Configuration - รองรับ Render (Backend) + Vercel (Frontend)
+// CORS Configuration
 app.use(cors({
   origin: function(origin, callback) {
-    // อนุญาต requests ที่ไม่มี origin (Postman, mobile apps, curl, server-to-server)
     if (!origin) return callback(null, true);
     
-    // ✅ Allowed origins
     const allowedOrigins = [
       'http://localhost:3000',
       'http://localhost:5173',
-      'https://projectbingsu.vercel.app',              // Vercel production
+      'https://projectbingsu.vercel.app',
       'https://projectbingsu-git-main.vercel.app',
       process.env.FRONTEND_URL
     ].filter(Boolean);
     
-    // ✅ Check exact match
     if (allowedOrigins.includes(origin)) {
       return callback(null, true);
     }
     
-    // ✅ Check Vercel preview URLs (projectbingsu-*.vercel.app)
     if (origin.match(/^https:\/\/projectbingsu.*\.vercel\.app$/)) {
       return callback(null, true);
     }
     
-    // ✅ Development mode - allow all
     if (process.env.NODE_ENV === 'development') {
       return callback(null, true);
     }
     
-    // ❌ Block other origins
     console.warn(`CORS blocked origin: ${origin}`);
     callback(new Error('Not allowed by CORS'));
   },
@@ -55,7 +47,7 @@ app.use(cors({
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
   exposedHeaders: ['Content-Range', 'X-Content-Range'],
-  maxAge: 86400 // 24 hours
+  maxAge: 86400
 }));
 
 app.use(express.json());
@@ -71,7 +63,7 @@ app.use('/api/orders', orderRoutes);
 app.use('/api/menu-codes', menuCodeRoutes);
 app.use('/api/reviews', reviewRoutes);
 app.use('/api/users', userRoutes);
-
+app.use('/api/stock', stockRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
@@ -95,6 +87,7 @@ app.get('/', (req, res) => {
       menuCodes: '/api/menu-codes',
       reviews: '/api/reviews',
       users: '/api/users',
+      stock: '/api/stock',
       health: '/api/health'
     }
   });

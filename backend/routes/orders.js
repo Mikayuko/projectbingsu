@@ -1,8 +1,10 @@
+// backend/routes/orders.js - Fixed Version
 const express = require('express');
 const { body, validationResult } = require('express-validator');
 const Order = require('../models/Order');
 const MenuCode = require('../models/MenuCode');
 const User = require('../models/User');
+const Stock = require('../models/Stock');
 const { authenticate, optionalAuth, isAdmin } = require('../middleware/auth');
 
 const router = express.Router();
@@ -17,7 +19,6 @@ router.post('/create', optionalAuth, [
   try {
     console.log('📝 Creating order with data:', req.body);
     
-    // Validate request
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
       console.log('❌ Validation errors:', errors.array());
@@ -29,7 +30,36 @@ router.post('/create', optionalAuth, [
     
     const { menuCode, shavedIce, toppings, specialInstructions } = req.body;
     
-    // Validate menu code exists
+    // ✅ Check stock availability
+    try {
+      const flavorStock = await Stock.findOne({ 
+        itemType: 'flavor', 
+        name: shavedIce.flavor 
+      });
+      
+      if (!flavorStock || flavorStock.quantity < 1) {
+        return res.status(400).json({ 
+          message: `Sorry, ${shavedIce.flavor} is out of stock` 
+        });
+      }
+
+      for (const topping of toppings) {
+        const toppingStock = await Stock.findOne({ 
+          itemType: 'topping', 
+          name: topping.name 
+        });
+        
+        if (!toppingStock || toppingStock.quantity < 1) {
+          return res.status(400).json({ 
+            message: `Sorry, ${topping.name} is out of stock` 
+          });
+        }
+      }
+    } catch (stockError) {
+      console.warn('⚠️ Stock check failed, continuing:', stockError);
+    }
+    
+    // Validate menu code
     let codeDoc;
     try {
       codeDoc = await MenuCode.findOne({ 
@@ -48,19 +78,10 @@ router.post('/create', optionalAuth, [
     if (!codeDoc) {
       console.log('❌ Menu code not found:', menuCode);
       return res.status(400).json({ 
-        message: 'Invalid menu code. Please check the code or generate a new one.' 
+        message: 'Invalid menu code' 
       });
     }
     
-    // Check if code is already used
-    if (codeDoc.isUsed) {
-      console.log('❌ Menu code already used:', menuCode);
-      return res.status(400).json({ 
-        message: 'This menu code has already been used' 
-      });
-    }
-    
-    // Check if expired
     if (codeDoc.expiresAt < new Date()) {
       console.log('❌ Menu code expired:', menuCode);
       return res.status(400).json({ 
@@ -68,31 +89,38 @@ router.post('/create', optionalAuth, [
       });
     }
     
+    // ✅ Check if code already used
+    if (codeDoc.usageCount >= 1) {
+      console.log('❌ Menu code already used:', menuCode);
+      return res.status(400).json({ 
+        message: 'This menu code has already been used' 
+      });
+    }
+    
     console.log('✅ Menu code is valid:', menuCode);
     
-    // Generate customer code
-    const customerCode = `#${Math.random().toString(36).substr(2, 5).toUpperCase()}`;
-    console.log('🎫 Generated customer code:', customerCode);
+    // ✅ ใช้ menuCode เป็น customerCode เลย (เพิ่ม # นำหน้า)
+    const customerCode = `#${menuCode.toUpperCase()}`;
+    console.log('🎫 Using menu code as customer code:', customerCode);
     
     // Create order
     const order = new Order({
       customerId: req.user?._id,
       menuCode: menuCode.toUpperCase(),
-      customerCode,
+      customerCode,  // ✅ ใช้โค้ดเดียวกัน
       cupSize: codeDoc.cupSize,
       shavedIce,
       toppings,
       specialInstructions,
       pricing: {
         basePrice: 60,
-      }
+      },
+      paymentStatus: 'Paid'
     });
     
-    // Calculate total
     order.calculateTotal();
     console.log('💰 Calculated total:', order.pricing.total);
     
-    // Check if user gets free drink (9th stamp)
     let earnedFreeDrink = false;
     if (req.user) {
       try {
@@ -102,11 +130,10 @@ router.post('/create', optionalAuth, [
           
           if (earnedFreeDrink) {
             order.isFreeDrink = true;
-            order.calculateTotal(); // Recalculate with free drink
+            order.calculateTotal();
             console.log('🎉 User earned free drink!');
           }
           
-          // Add to order history
           user.orderHistory.push(order._id);
           user.loyaltyPoints += Math.floor(order.pricing.total / 10);
           await user.save();
@@ -114,11 +141,9 @@ router.post('/create', optionalAuth, [
         }
       } catch (userError) {
         console.error('⚠️ Error updating user, but continuing:', userError);
-        // Continue even if user update fails
       }
     }
     
-    // Save order
     try {
       await order.save();
       console.log('✅ Order saved successfully:', order.orderId);
@@ -130,24 +155,29 @@ router.post('/create', optionalAuth, [
       });
     }
     
-    // Mark code as used
+    // ✅ Reduce stock
     try {
-      codeDoc.isUsed = true;
-      codeDoc.usedBy = {
-        order: order._id,
-        usedAt: new Date()
-      };
-      await codeDoc.save();
-      console.log('✅ Menu code marked as used');
+      await Stock.reduceStock('flavor', shavedIce.flavor, 1);
+      for (const topping of toppings) {
+        await Stock.reduceStock('topping', topping.name, 1);
+      }
+      console.log('✅ Stock reduced successfully');
+    } catch (stockError) {
+      console.error('⚠️ Error reducing stock:', stockError);
+    }
+    
+    // ✅ Update menu code usage
+    try {
+      await MenuCode.validateAndUse(menuCode, order._id);
+      console.log('✅ Menu code marked as used (expires immediately)');
     } catch (codeError) {
-      console.error('⚠️ Error marking code as used:', codeError);
-      // Continue even if code update fails
+      console.error('⚠️ Error updating code usage:', codeError);
     }
     
     res.status(201).json({
       message: 'Order created successfully',
       order,
-      customerCode,
+      customerCode: customerCode.replace('#', ''), // ส่งกลับไปไม่มี #
       earnedFreeDrink
     });
     
@@ -161,17 +191,14 @@ router.post('/create', optionalAuth, [
   }
 });
 
-
 // GET /api/orders/track/:customerCode
 router.get('/track/:customerCode', async (req, res) => {
   try {
     let code = req.params.customerCode.toUpperCase();
-    // ตัด # ถ้ามี
     if (code.startsWith('#')) code = code.slice(1);
 
     console.log('🔍 Tracking order:', code);
 
-    // หา order แบบ case-insensitive และ ignore #
     const order = await Order.findOne({ customerCode: new RegExp(`^#?${code}$`, 'i') });
 
     if (!order) {
@@ -189,7 +216,6 @@ router.get('/track/:customerCode', async (req, res) => {
     });
   }
 });
-
 
 // GET /api/orders/my-orders
 router.get('/my-orders', authenticate, async (req, res) => {
