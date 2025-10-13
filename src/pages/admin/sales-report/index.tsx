@@ -1,4 +1,4 @@
-// src/pages/admin/sales-report/index.tsx - Fixed Complete Version
+// src/pages/admin/sales-report/index.tsx - แสดงทั้งหมด เรียงมาก→น้อย + เพิ่มเวลา
 
 'use client';
 
@@ -79,16 +79,9 @@ export default function SalesReportPage() {
 
   const calculateSalesData = (allOrders: Order[]) => {
     const now = new Date();
-    
-    // ✅⭐ กรองเฉพาะ Completed เท่านั้น (ไม่นับ Cancelled, Pending, etc.)
     const filteredOrders = allOrders.filter(order => {
-      // ต้องเป็น Completed เท่านั้น
-      if (order.status !== 'Completed') {
-        return false;
-      }
-      
       const orderDate = new Date(order.createdAt);
-        
+      
       switch (period) {
         case 'today':
           return orderDate.toDateString() === now.toDateString();
@@ -132,7 +125,7 @@ export default function SalesReportPage() {
     const totalOrders = filteredOrders.length;
     const totalRevenue = filteredOrders.reduce((sum, order) => sum + (order.pricing?.total || 0), 0);
 
-    // ✅ Top Flavors - คะแนนเท่ากัน = อันดับเดียวกัน
+    // ✅ Top Flavors - แสดงทั้งหมดเรียงจากมาก→น้อย
     const flavorCount: { [key: string]: number } = {};
     filteredOrders.forEach(order => {
       const flavor = order.shavedIce?.flavor || 'Unknown';
@@ -141,14 +134,9 @@ export default function SalesReportPage() {
     
     const topFlavors = Object.entries(flavorCount)
       .map(([name, count]) => ({ name, count }))
-      .sort((a, b) => {
-        if (b.count !== a.count) {
-          return b.count - a.count;
-        }
-        return a.name.localeCompare(b.name);
-      });
+      .sort((a, b) => b.count - a.count); // เรียงมาก→น้อย
 
-    // ✅ Top Toppings - คะแนนเท่ากัน = อันดับเดียวกัน
+    // ✅ Top Toppings - แสดงทั้งหมดเรียงจากมาก→น้อย
     const toppingCount: { [key: string]: number } = {};
     filteredOrders.forEach(order => {
       order.toppings?.forEach(topping => {
@@ -158,14 +146,9 @@ export default function SalesReportPage() {
     
     const topToppings = Object.entries(toppingCount)
       .map(([name, count]) => ({ name, count }))
-      .sort((a, b) => {
-        if (b.count !== a.count) {
-          return b.count - a.count;
-        }
-        return a.name.localeCompare(b.name);
-      });
+      .sort((a, b) => b.count - a.count); // เรียงมาก→น้อย
 
-    // ✅ Peak Times
+    // ✅ Peak Times - แสดงทั้งหมดเรียงจากมาก→น้อย
     const hourCount: { [key: string]: number } = {};
     filteredOrders.forEach(order => {
       const hour = new Date(order.createdAt).getHours();
@@ -175,7 +158,7 @@ export default function SalesReportPage() {
     
     const peakTimes = Object.entries(hourCount)
       .map(([timeRange, count]) => ({ timeRange, count }))
-      .sort((a, b) => b.count - a.count);
+      .sort((a, b) => b.count - a.count); // เรียงมาก→น้อย
 
     // Top Combinations
     const comboCount: { [key: string]: number } = {};
@@ -304,22 +287,12 @@ export default function SalesReportPage() {
                 <h3 className="text-2xl font-bold mb-4">🍧 Top Flavors (All)</h3>
                 {summary.topFlavors.length > 0 ? (
                   <div className="space-y-2 max-h-64 overflow-y-auto">
-                    {summary.topFlavors.map((flavor, idx, arr) => {
-                      // ✅ คำนวณอันดับจริง (คะแนนเท่ากัน = อันดับเดียวกัน)
-                      let rank = 1;
-                      for (let i = 0; i < idx; i++) {
-                        if (arr[i].count > flavor.count) {
-                          rank++;
-                        }
-                      }
-                      
-                      return (
-                        <div key={idx} className="bg-white/20 backdrop-blur-sm rounded-lg p-3 flex justify-between items-center">
-                          <span className="font-bold">#{rank} {flavor.name}</span>
-                          <span className="text-xl font-bold">{flavor.count}</span>
-                        </div>
-                      );
-                    })}
+                    {summary.topFlavors.map((flavor, idx) => (
+                      <div key={idx} className="bg-white/20 backdrop-blur-sm rounded-lg p-3 flex justify-between items-center">
+                        <span className="font-bold">#{idx + 1} {flavor.name}</span>
+                        <span className="text-xl font-bold">{flavor.count}</span>
+                      </div>
+                    ))}
                   </div>
                 ) : (
                   <p className="text-white/70">No data</p>
@@ -330,22 +303,12 @@ export default function SalesReportPage() {
                 <h3 className="text-2xl font-bold mb-4">🍓 Top Toppings (All)</h3>
                 {summary.topToppings.length > 0 ? (
                   <div className="space-y-2 max-h-64 overflow-y-auto">
-                    {summary.topToppings.map((topping, idx, arr) => {
-                      // ✅ คำนวณอันดับจริง (คะแนนเท่ากัน = อันดับเดียวกัน)
-                      let rank = 1;
-                      for (let i = 0; i < idx; i++) {
-                        if (arr[i].count > topping.count) {
-                          rank++;
-                        }
-                      }
-                      
-                      return (
-                        <div key={idx} className="bg-white/20 backdrop-blur-sm rounded-lg p-3 flex justify-between items-center">
-                          <span className="font-bold">#{rank} {topping.name}</span>
-                          <span className="text-xl font-bold">{topping.count}</span>
-                        </div>
-                      );
-                    })}
+                    {summary.topToppings.map((topping, idx) => (
+                      <div key={idx} className="bg-white/20 backdrop-blur-sm rounded-lg p-3 flex justify-between items-center">
+                        <span className="font-bold">#{idx + 1} {topping.name}</span>
+                        <span className="text-xl font-bold">{topping.count}</span>
+                      </div>
+                    ))}
                   </div>
                 ) : (
                   <p className="text-white/70">No data</p>

@@ -1,4 +1,4 @@
-// src/pages/menu/index.tsx - Full MongoDB Integration
+// src/pages/menu/index.tsx - Final: ใช้ menuCode เป็น tracking code
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
@@ -29,15 +29,13 @@ export default function MenuPage() {
   const [error, setError] = useState('');
   const [showOrderForm, setShowOrderForm] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
-  const [customerCode, setCustomerCode] = useState('');
+  const [trackingCode, setTrackingCode] = useState(''); // ✅ ใช้ menuCode เป็น tracking
   const [validating, setValidating] = useState(false);
   
-  // ✅ MongoDB Stock Data
   const [availableFlavors, setAvailableFlavors] = useState<MenuItem[]>([]);
   const [availableToppings, setAvailableToppings] = useState<MenuItem[]>([]);
   const [loadingMenu, setLoadingMenu] = useState(true);
 
-  // Default menu items (used as fallback)
   const defaultFlavors: MenuItem[] = [
     {
       name: 'Strawberry',
@@ -77,7 +75,6 @@ export default function MenuPage() {
     loadAvailableItems();
   }, [code]);
 
-  // ✅ Load available items from MongoDB Stock
   const loadAvailableItems = async () => {
     setLoadingMenu(true);
     try {
@@ -86,7 +83,6 @@ export default function MenuPage() {
         api.getAvailableItems('topping')
       ]);
 
-      // Map MongoDB data to menu items with stock info
       const flavorsWithStock = defaultFlavors.map(flavor => {
         const stockItem = flavorsResult.items?.find((item: any) => 
           item.name.toLowerCase() === flavor.name.toLowerCase()
@@ -113,7 +109,6 @@ export default function MenuPage() {
       setAvailableToppings(toppingsWithStock);
     } catch (error) {
       console.error('Failed to load stock data:', error);
-      // Use default items if stock API fails
       setAvailableFlavors(defaultFlavors.map(f => ({ ...f, available: true, stock: 100 })));
       setAvailableToppings(defaultToppings.map(t => ({ ...t, available: true, stock: 100 })));
     } finally {
@@ -177,7 +172,7 @@ export default function MenuPage() {
   };
 
   const calculateTotal = () => {
-    let total = 60; // Base price
+    let total = 60;
     const sizePrice = { S: 0, M: 10, L: 20 };
     total += sizePrice[cupSize as keyof typeof sizePrice] || 0;
     total += selectedToppings.length * 10;
@@ -195,7 +190,6 @@ export default function MenuPage() {
       return false;
     }
     
-    // Check if selected toppings are still available
     const unavailableToppings = selectedToppings.filter(t => !t.available);
     if (unavailableToppings.length > 0) {
       setError(`Sorry, these toppings are no longer available: ${unavailableToppings.map(t => t.name).join(', ')}`);
@@ -226,18 +220,20 @@ export default function MenuPage() {
       };
 
       const result = await api.createOrder(orderData);
-      setCustomerCode(result.customerCode.replace('#', ''));
+      
+      // ✅ ใช้ menuCode เป็น tracking code
+      setTrackingCode(result.trackingCode || menuCode.toUpperCase());
       setShowSuccessModal(true);
       
-      // Reload stock after successful order
       await loadAvailableItems();
       
     } catch (err: any) {
       console.error('Order creation failed:', err);
       if (err.message.includes('out of stock')) {
         setError(err.message);
-        // Reload stock to get latest availability
         await loadAvailableItems();
+      } else if (err.message.includes('already been used')) {
+        setError('This menu code has already been used. Please get a new code.');
       } else {
         setError(err.message || 'Failed to create order');
       }
@@ -301,6 +297,14 @@ export default function MenuPage() {
             {error}
           </div>
         )}
+
+        {/* ✅ แจ้งเตือนว่า code นี้จะใช้ track order */}
+        <div className="mb-6 p-4 bg-blue-50 border-2 border-blue-200 rounded-lg">
+          <p className="text-blue-800 font-['Iceland'] text-center">
+            💡 <strong>Your tracking code: {menuCode}</strong><br/>
+            Use this code to track your order after placing it
+          </p>
+        </div>
 
         {loadingMenu ? (
           <div className="text-center py-12">
@@ -421,6 +425,7 @@ export default function MenuPage() {
             <div className="bg-white rounded-lg shadow-lg p-6 mb-8">
               <h3 className="text-2xl text-[#69806C] font-['Iceland'] mb-4">Order Summary</h3>
               <div className="space-y-2 text-lg font-['Iceland']">
+                <p>Tracking Code: <span className="font-bold text-blue-600">{menuCode}</span></p>
                 <p>Size: <span className="font-bold">{cupSize}</span></p>
                 <p>Flavor: <span className="font-bold">{selectedFlavor?.name || 'Not selected'}</span></p>
                 <p>Toppings: <span className="font-bold">
@@ -459,18 +464,26 @@ export default function MenuPage() {
               ✅ Order Successful!
             </h2>
             <div className="bg-gray-100 p-4 rounded mb-4">
-              <p className="text-sm text-gray-600 text-center font-['Iceland']">Customer Code:</p>
-              <p className="text-4xl font-bold text-[#69806C] text-center font-['Iceland']">{customerCode}</p>
+              <p className="text-sm text-gray-600 text-center font-['Iceland']">Your Tracking Code:</p>
+              <p className="text-4xl font-bold text-[#69806C] text-center font-['Iceland']">{trackingCode}</p>
             </div>
             <p className="text-sm mb-4 text-center font-['Iceland']">
-              ⚠️ Save this code to track your order
+              ⚠️ Use this code to track your order status
             </p>
-            <button
-              onClick={() => router.push('/home')}
-              className="w-full bg-[#69806C] text-white py-3 rounded font-['Iceland'] text-lg hover:bg-[#5a6e5e] transition"
-            >
-              Back to Home
-            </button>
+            <div className="flex gap-2">
+              <button
+                onClick={() => router.push(`/order?code=${trackingCode}`)}
+                className="flex-1 bg-blue-500 text-white py-3 rounded font-['Iceland'] text-lg hover:bg-blue-600 transition"
+              >
+                Track Order
+              </button>
+              <button
+                onClick={() => router.push('/home')}
+                className="flex-1 bg-[#69806C] text-white py-3 rounded font-['Iceland'] text-lg hover:bg-[#5a6e5e] transition"
+              >
+                Back to Home
+              </button>
+            </div>
           </div>
         </div>
       )}

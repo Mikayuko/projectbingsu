@@ -1,4 +1,4 @@
-// src/pages/order/index.tsx - Combined Order Tracking (Single Page)
+// src/pages/order/index.tsx - Final: Track ด้วย menuCode
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
@@ -8,7 +8,7 @@ import { api, getCurrentUser, isAuthenticated } from '@/utils/api';
 interface Order {
   _id: string;
   orderId: string;
-  customerCode: string;
+  menuCode: string; // ✅ ใช้ menuCode เป็น tracking
   cupSize: string;
   shavedIce: { flavor: string };
   toppings: Array<{ name: string }>;
@@ -20,16 +20,24 @@ interface Order {
 
 export default function OrderHubPage() {
   const router = useRouter();
+  const { code } = router.query; // ✅ รับ code จาก URL
   const [trackingCode, setTrackingCode] = useState('');
   const [myOrders, setMyOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<'track' | 'history'>('track');
   const user = getCurrentUser();
 
-  // ✅ Track Order State
   const [trackedOrder, setTrackedOrder] = useState<Order | null>(null);
   const [trackError, setTrackError] = useState('');
   const [autoRefresh, setAutoRefresh] = useState(true);
+
+  useEffect(() => {
+    // ✅ ถ้ามี code จาก URL ให้ track ทันที
+    if (code && typeof code === 'string') {
+      setTrackingCode(code.toUpperCase());
+      handleTrack(code.toUpperCase());
+    }
+  }, [code]);
 
   useEffect(() => {
     if (isAuthenticated() && activeTab === 'history') {
@@ -37,11 +45,10 @@ export default function OrderHubPage() {
     }
   }, [activeTab]);
 
-  // ✅ Auto refresh tracked order
   useEffect(() => {
     if (trackedOrder && autoRefresh && trackedOrder.status !== 'Completed' && trackedOrder.status !== 'Cancelled') {
       const interval = setInterval(() => {
-        trackOrderSilent(trackedOrder.customerCode);
+        trackOrderSilent(trackedOrder.menuCode);
       }, 10000);
       return () => clearInterval(interval);
     }
@@ -59,27 +66,28 @@ export default function OrderHubPage() {
     }
   };
 
-  // ✅ Track Order Function
-  const handleTrack = async () => {
-    if (!trackingCode.trim()) {
-      setTrackError('Please enter a customer code');
+  const handleTrack = async (codeToTrack?: string) => {
+    const code = codeToTrack || trackingCode;
+    
+    if (!code.trim()) {
+      setTrackError('Please enter a tracking code');
       return;
     }
 
-    const cleanCode = trackingCode.trim().toUpperCase();
+    const cleanCode = code.trim().toUpperCase();
     setLoading(true);
     setTrackError('');
     setTrackedOrder(null);
 
     try {
-      console.log('🔍 Tracking order:', cleanCode);
+      console.log('🔍 Tracking order with code:', cleanCode);
       const result = await api.trackOrder(cleanCode);
       setTrackedOrder(result.order);
       console.log('✅ Order found:', result.order);
     } catch (err: any) {
       console.error('❌ Track error:', err);
-      if (err.message.includes('404')) {
-        setTrackError('Order not found. Please check your customer code.');
+      if (err.message.includes('404') || err.message.includes('not found')) {
+        setTrackError('Order not found. Please check your tracking code.');
       } else {
         setTrackError(err.message || 'Failed to track order');
       }
@@ -89,7 +97,6 @@ export default function OrderHubPage() {
     }
   };
 
-  // Silent refresh for auto-update
   const trackOrderSilent = async (code: string) => {
     try {
       const result = await api.trackOrder(code);
@@ -134,7 +141,6 @@ export default function OrderHubPage() {
 
   return (
     <div className="min-h-screen bg-[#EBE6DE]">
-      {/* Header */}
       <div className="w-full h-[100px] bg-[#69806C] flex items-center px-10 shadow-lg">
         <Link href="/home">
           <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center cursor-pointer hover:bg-white/30 transition">
@@ -145,17 +151,15 @@ export default function OrderHubPage() {
       </div>
 
       <div className="max-w-6xl mx-auto px-4 py-10">
-        {/* Welcome Section */}
         <div className="bg-white rounded-xl shadow-lg p-8 mb-8">
           <h2 className="text-4xl text-[#69806C] font-['Iceland'] mb-4 text-center">
             🍧 Bingsu Order Management
           </h2>
           <p className="text-center text-gray-600 font-['Iceland'] text-lg">
-            Track your order or view your order history
+            Track your order using your menu code
           </p>
         </div>
 
-        {/* Tabs */}
         <div className="flex justify-center mb-8">
           <div className="bg-white rounded-lg shadow-md p-1 inline-flex">
             <button
@@ -187,10 +191,8 @@ export default function OrderHubPage() {
           </div>
         </div>
 
-        {/* Track Order Tab */}
         {activeTab === 'track' && (
           <div className="space-y-6">
-            {/* Track Form */}
             <div className="bg-white rounded-xl shadow-lg p-8">
               <h3 className="text-2xl text-[#69806C] font-['Iceland'] mb-6 text-center">
                 Track Your Order
@@ -199,7 +201,7 @@ export default function OrderHubPage() {
               <div className="max-w-2xl mx-auto">
                 <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
                   <p className="text-sm text-blue-800 font-['Iceland']">
-                    💡 Your customer code should look like: <strong>ABC12</strong>
+                    💡 Your tracking code is the <strong>same as your menu code</strong> (e.g., ABC12)
                   </p>
                 </div>
 
@@ -211,14 +213,14 @@ export default function OrderHubPage() {
                       setTrackingCode(e.target.value.toUpperCase());
                       setTrackError('');
                     }}
-                    placeholder="XXXXX"
+                    placeholder="Enter your menu code (XXXXX)"
                     className="flex-1 p-4 text-xl font-['Iceland'] border-2 border-[#69806C] rounded-lg focus:outline-none focus:border-[#5a6e5e] uppercase"
                     onKeyPress={(e) => e.key === 'Enter' && handleTrack()}
-                    maxLength={6}
+                    maxLength={5}
                     disabled={loading}
                   />
                   <button
-                    onClick={handleTrack}
+                    onClick={() => handleTrack()}
                     disabled={loading || !trackingCode.trim()}
                     className="px-8 py-4 bg-[#69806C] text-white text-xl font-['Iceland'] rounded-lg hover:bg-[#5a6e5e] transition disabled:opacity-50"
                   >
@@ -234,10 +236,8 @@ export default function OrderHubPage() {
               </div>
             </div>
 
-            {/* Tracked Order Display */}
             {trackedOrder && (
               <div className="bg-white rounded-xl shadow-lg p-6">
-                {/* Status Header */}
                 <div className={`${getStatusColor(trackedOrder.status)} text-white rounded-lg p-6 mb-6 text-center`}>
                   <div className="text-6xl mb-2">{getStatusIcon(trackedOrder.status)}</div>
                   <h3 className="text-3xl font-['Iceland'] mb-2">Order {trackedOrder.status}</h3>
@@ -246,20 +246,20 @@ export default function OrderHubPage() {
                   </p>
                 </div>
 
-                {/* Auto Refresh Toggle */}
                 {trackedOrder.status !== 'Completed' && trackedOrder.status !== 'Cancelled' && (
-                  
-                    <div className="flex items-center justify-between">
-                      <label className="flex items-center gap-2">
-                        
-                        
-                      </label>
-                      
-                    </div>
-                  
+                  <div className="mb-6 p-4 bg-gray-50 rounded-lg">
+                    <label className="flex items-center gap-2 justify-center">
+                      <input
+                        type="checkbox"
+                        checked={autoRefresh}
+                        onChange={(e) => setAutoRefresh(e.target.checked)}
+                        className="w-4 h-4"
+                      />
+                      <span className="text-gray-700 font-['Iceland']">Auto-refresh every 10 seconds</span>
+                    </label>
+                  </div>
                 )}
 
-                {/* Progress Timeline */}
                 <div className="mb-6">
                   <h4 className="text-xl text-[#69806C] font-['Iceland'] mb-4">Order Progress</h4>
                   <div className="relative pl-8">
@@ -284,13 +284,12 @@ export default function OrderHubPage() {
                   </div>
                 </div>
 
-                {/* Order Details */}
                 <div className="border-t pt-6">
                   <h4 className="text-xl text-[#69806C] font-['Iceland'] mb-4">Order Details</h4>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-lg font-['Iceland']">
                     <div>
-                      <p className="text-gray-600">Customer Code:</p>
-                      <p className="font-bold text-[#543429]">{trackedOrder.customerCode.replace('#', '')}</p>
+                      <p className="text-gray-600">Tracking Code:</p>
+                      <p className="font-bold text-[#543429]">{trackedOrder.menuCode}</p>
                     </div>
                     <div>
                       <p className="text-gray-600">Cup Size:</p>
@@ -330,19 +329,17 @@ export default function OrderHubPage() {
                   )}
                 </div>
 
-                {/* Ready Alert */}
                 {trackedOrder.status === 'Ready' && (
                   <div className="mt-6 p-4 bg-green-50 border-2 border-green-200 rounded-lg animate-pulse">
                     <p className="text-green-800 font-['Iceland'] text-xl font-bold">
                       🎉 Your order is ready for pickup!
                     </p>
                     <p className="text-green-700 text-sm mt-1 font-['Iceland']">
-                      Please come to the counter with code: <strong>{trackedOrder.customerCode.replace('#', '')}</strong>
+                      Please come to the counter with code: <strong>{trackedOrder.menuCode}</strong>
                     </p>
                   </div>
                 )}
 
-                {/* Actions */}
                 <div className="mt-6 flex gap-4 justify-center">
                   <button
                     onClick={() => {
@@ -364,7 +361,6 @@ export default function OrderHubPage() {
               </div>
             )}
 
-            {/* Info Cards (shown when no order tracked) */}
             {!trackedOrder && !trackError && (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6">
@@ -372,8 +368,8 @@ export default function OrderHubPage() {
                     💡 How to track?
                   </h4>
                   <ol className="text-sm text-yellow-700 font-['Iceland'] space-y-2">
-                    <li>1. Get your customer code after ordering</li>
-                    <li>2. Enter the code above (e.g., #ABC12)</li>
+                    <li>1. Get your menu code when ordering</li>
+                    <li>2. Enter the code above (e.g., ABC12)</li>
                     <li>3. Click "Track" to see real-time status</li>
                   </ol>
                 </div>
@@ -383,7 +379,7 @@ export default function OrderHubPage() {
                     📱 Save your code!
                   </h4>
                   <p className="text-sm text-blue-700 font-['Iceland'] mb-3">
-                    Take a photo or write down your customer code to track your order anytime.
+                    Your menu code is your tracking code. Keep it safe to track your order anytime.
                   </p>
                   <Link href="/home">
                     <button className="w-full px-4 py-2 bg-blue-600 text-white rounded font-['Iceland'] hover:bg-blue-700 transition">
@@ -396,7 +392,6 @@ export default function OrderHubPage() {
           </div>
         )}
 
-        {/* Order History Tab - unchanged */}
         {activeTab === 'history' && isAuthenticated() && (
           <div className="bg-white rounded-xl shadow-lg p-8">
             <h3 className="text-2xl text-[#69806C] font-['Iceland'] mb-6">
@@ -442,8 +437,8 @@ export default function OrderHubPage() {
 
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
                       <div>
-                        <p className="text-xs text-gray-500 font-['Iceland']">Customer Code</p>
-                        <p className="font-['Iceland'] text-[#543429] font-bold">{order.customerCode.replace('#', '')}</p>
+                        <p className="text-xs text-gray-500 font-['Iceland']">Tracking Code</p>
+                        <p className="font-['Iceland'] text-[#543429] font-bold">{order.menuCode}</p>
                       </div>
                       <div>
                         <p className="text-xs text-gray-500 font-['Iceland']">Size</p>
@@ -472,9 +467,8 @@ export default function OrderHubPage() {
                       <button
                         onClick={() => {
                           setActiveTab('track');
-                          // ✅ เอา # ออกก่อนส่งไป track
-                          setTrackingCode(order.customerCode.replace('#', ''));
-                          setTimeout(() => handleTrack(), 100);
+                          setTrackingCode(order.menuCode);
+                          setTimeout(() => handleTrack(order.menuCode), 100);
                         }}
                         className="px-4 py-2 bg-[#69806C] text-white font-['Iceland'] text-sm rounded hover:bg-[#5a6e5e] transition"
                       >
@@ -498,7 +492,6 @@ export default function OrderHubPage() {
               </div>
             )}
 
-            {/* Loyalty Summary */}
             {user && (
               <div className="mt-8 p-6 bg-gradient-to-r from-[#69806C] to-[#947E5A] rounded-lg text-white">
                 <h4 className="text-xl font-['Iceland'] mb-2">Your Rewards</h4>
@@ -522,7 +515,6 @@ export default function OrderHubPage() {
           </div>
         )}
 
-        {/* Not Logged In */}
         {activeTab === 'history' && !isAuthenticated() && (
           <div className="bg-white rounded-xl shadow-lg p-12 text-center">
             <div className="text-6xl mb-4">🔒</div>

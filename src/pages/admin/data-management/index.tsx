@@ -196,20 +196,20 @@ export default function DataManagementPage() {
   };
 
   const handleRestockItem = async (stockId: string, itemName: string, currentQty: number) => {
-  if (!confirm(`Restock ${itemName}?\nCurrent: ${currentQty}`)) return;
-  
-  setStockLoading(true);
-  try {
-    const result = await api.restockItem(stockId);
-    alert(`✅ ${result.message}`);
-    await loadStockData();
-  } catch (error) {
-    console.error('Failed to restock:', error);
-    alert('Failed to restock item');
-  } finally {
-    setStockLoading(false);
-  }
-};
+    if (!confirm(`Restock ${itemName}?\nCurrent: ${currentQty}`)) return;
+    
+    setStockLoading(true);
+    try {
+      const result = await api.restockItem(stockId);
+      alert(`✅ ${result.message}`);
+      await loadStockData();
+    } catch (error) {
+      console.error('Failed to restock:', error);
+      alert('Failed to restock item');
+    } finally {
+      setStockLoading(false);
+    }
+  };
   const loadAllUsers = async () => {
     try {
       const filters: any = {};
