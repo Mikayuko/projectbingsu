@@ -1,4 +1,3 @@
-// backend/routes/orders.js - Fixed Version
 const express = require('express');
 const { body, validationResult } = require('express-validator');
 const Order = require('../models/Order');
@@ -30,7 +29,7 @@ router.post('/create', optionalAuth, [
     
     const { menuCode, shavedIce, toppings, specialInstructions } = req.body;
     
-    // ✅ Check stock availability
+    // Check stock availability
     try {
       const flavorStock = await Stock.findOne({ 
         itemType: 'flavor', 
@@ -59,55 +58,22 @@ router.post('/create', optionalAuth, [
       console.warn('⚠️ Stock check failed, continuing:', stockError);
     }
     
-    // Validate menu code
+    // ✅ Validate menu code (ต้องยังไม่ถูกใช้)
     let codeDoc;
     try {
-      codeDoc = await MenuCode.findOne({ 
-        code: menuCode.toUpperCase()
-      });
-      
-      console.log('🔍 Menu code lookup result:', codeDoc);
-    } catch (dbError) {
-      console.error('❌ Database error looking up menu code:', dbError);
-      return res.status(500).json({ 
-        message: 'Database error',
-        error: dbError.message 
-      });
-    }
-    
-    if (!codeDoc) {
-      console.log('❌ Menu code not found:', menuCode);
+      codeDoc = await MenuCode.validateCode(menuCode);
+      console.log('✅ Menu code is valid:', menuCode);
+    } catch (codeError) {
+      console.log('❌ Menu code error:', codeError.message);
       return res.status(400).json({ 
-        message: 'Invalid menu code' 
+        message: codeError.message 
       });
     }
     
-    if (codeDoc.expiresAt < new Date()) {
-      console.log('❌ Menu code expired:', menuCode);
-      return res.status(400).json({ 
-        message: 'Menu code has expired' 
-      });
-    }
-    
-    // ✅ Check if code already used
-    if (codeDoc.usageCount >= 1) {
-      console.log('❌ Menu code already used:', menuCode);
-      return res.status(400).json({ 
-        message: 'This menu code has already been used' 
-      });
-    }
-    
-    console.log('✅ Menu code is valid:', menuCode);
-    
-    // ✅ ใช้ menuCode เป็น customerCode เลย (เพิ่ม # นำหน้า)
-    const customerCode = `#${menuCode.toUpperCase()}`;
-    console.log('🎫 Using menu code as customer code:', customerCode);
-    
-    // Create order
+    // ✅ Create order (ใช้ menuCode เป็น tracking code)
     const order = new Order({
       customerId: req.user?._id,
-      menuCode: menuCode.toUpperCase(),
-      customerCode,  // ✅ ใช้โค้ดเดียวกัน
+      menuCode: menuCode.toUpperCase(), // ✅ นี่คือ tracking code
       cupSize: codeDoc.cupSize,
       shavedIce,
       toppings,
@@ -121,6 +87,7 @@ router.post('/create', optionalAuth, [
     order.calculateTotal();
     console.log('💰 Calculated total:', order.pricing.total);
     
+    // Check if user gets free drink
     let earnedFreeDrink = false;
     if (req.user) {
       try {
@@ -144,6 +111,7 @@ router.post('/create', optionalAuth, [
       }
     }
     
+    // Save order
     try {
       await order.save();
       console.log('✅ Order saved successfully:', order.orderId);
@@ -155,7 +123,15 @@ router.post('/create', optionalAuth, [
       });
     }
     
-    // ✅ Reduce stock
+    // ✅ Mark menu code as used
+    try {
+      await MenuCode.useCode(menuCode, order._id);
+      console.log('✅ Menu code marked as used');
+    } catch (codeError) {
+      console.error('⚠️ Error marking code as used:', codeError);
+    }
+    
+    // Reduce stock
     try {
       await Stock.reduceStock('flavor', shavedIce.flavor, 1);
       for (const topping of toppings) {
@@ -166,18 +142,10 @@ router.post('/create', optionalAuth, [
       console.error('⚠️ Error reducing stock:', stockError);
     }
     
-    // ✅ Update menu code usage
-    try {
-      await MenuCode.validateAndUse(menuCode, order._id);
-      console.log('✅ Menu code marked as used (expires immediately)');
-    } catch (codeError) {
-      console.error('⚠️ Error updating code usage:', codeError);
-    }
-    
     res.status(201).json({
       message: 'Order created successfully',
       order,
-      customerCode: customerCode.replace('#', ''), // ส่งกลับไปไม่มี #
+      trackingCode: menuCode.toUpperCase(), // ✅ ใช้ menuCode เป็น tracking code
       earnedFreeDrink
     });
     
@@ -191,19 +159,20 @@ router.post('/create', optionalAuth, [
   }
 });
 
-// GET /api/orders/track/:customerCode
-router.get('/track/:customerCode', async (req, res) => {
+// ✅ GET /api/orders/track/:code - Track order by menu code
+router.get('/track/:code', async (req, res) => {
   try {
-    let code = req.params.customerCode.toUpperCase();
-    if (code.startsWith('#')) code = code.slice(1);
+    const code = req.params.code.toUpperCase();
+    console.log('🔍 Tracking order with code:', code);
 
-    console.log('🔍 Tracking order:', code);
-
-    const order = await Order.findOne({ customerCode: new RegExp(`^#?${code}$`, 'i') });
+    // ✅ หา order จาก menuCode
+    const order = await Order.findOne({ menuCode: code });
 
     if (!order) {
-      console.log('❌ Order not found:', code);
-      return res.status(404).json({ message: 'Order not found' });
+      console.log('❌ Order not found for code:', code);
+      return res.status(404).json({ 
+        message: 'Order not found. Please check your tracking code.' 
+      });
     }
 
     console.log('✅ Order found:', order.orderId);

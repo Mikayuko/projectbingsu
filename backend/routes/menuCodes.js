@@ -28,8 +28,8 @@ router.post('/generate', authenticate, isAdmin, [
       message: 'Menu code generated successfully',
       code: menuCode.code,
       cupSize: menuCode.cupSize,
-      maxUsage: menuCode.maxUsage,
-      expiresAt: menuCode.expiresAt
+      expiresAt: menuCode.expiresAt,
+      note: 'This code can be used once and will serve as the order tracking code'
     });
   } catch (error) {
     console.error('❌ Menu code generation error:', error);
@@ -73,14 +73,12 @@ router.post('/validate', [
     }
     
     console.log('✅ Code is valid. Cup size:', menuCode.cupSize);
-    console.log(`📊 Remaining uses: ${usageCheck.remainingUses}/${menuCode.maxUsage}`);
     
     res.json({
       valid: true,
       cupSize: menuCode.cupSize,
-      remainingUses: usageCheck.remainingUses,
-      maxUsage: menuCode.maxUsage,
-      message: `Code is valid. ${usageCheck.remainingUses} uses remaining.`
+      message: 'Code is valid. Use this code to place your order and track it later.',
+      note: 'This code will become your order tracking code after ordering'
     });
   } catch (error) {
     console.error('❌ Validation error:', error);
@@ -100,14 +98,12 @@ router.get('/admin/all', authenticate, isAdmin, async (req, res) => {
     const filter = {};
     
     if (status === 'used') {
-      filter.usageCount = { $gte: 1 };
+      filter.isUsed = true;
     } else if (status === 'unused') {
-      filter.usageCount = 0;
+      filter.isUsed = false;
     } else if (status === 'expired') {
-      filter.usageCount = { $lt: 5 };
+      filter.isUsed = false;
       filter.expiresAt = { $lt: new Date() };
-    } else if (status === 'full') {
-      filter.usageCount = { $gte: 5 };
     }
     
     if (cupSize) {
@@ -116,7 +112,7 @@ router.get('/admin/all', authenticate, isAdmin, async (req, res) => {
     
     const codes = await MenuCode.find(filter)
       .populate('createdBy', 'fullName')
-      .populate('usedBy.order')
+      .populate('order')
       .sort('-createdAt')
       .limit(100);
     
@@ -140,7 +136,7 @@ router.delete('/admin/cleanup', authenticate, isAdmin, async (req, res) => {
     
     console.log(`✅ Deleted ${deletedCount} expired codes`);
     res.json({
-      message: `Cleaned up ${deletedCount} expired codes`,
+      message: `Cleaned up ${deletedCount} expired unused codes`,
       deletedCount
     });
   } catch (error) {
@@ -161,22 +157,18 @@ router.get('/admin/stats', authenticate, isAdmin, async (req, res) => {
       {
         $facet: {
           total: [{ $count: 'count' }],
-          partiallyUsed: [
-            { $match: { usageCount: { $gte: 1, $lt: 5 } } },
-            { $count: 'count' }
-          ],
-          fullyUsed: [
-            { $match: { usageCount: { $gte: 5 } } },
+          used: [
+            { $match: { isUsed: true } },
             { $count: 'count' }
           ],
           unused: [
-            { $match: { usageCount: 0 } },
+            { $match: { isUsed: false } },
             { $count: 'count' }
           ],
           expired: [
             { 
               $match: { 
-                usageCount: { $lt: 5 },
+                isUsed: false,
                 expiresAt: { $lt: new Date() }
               } 
             },
@@ -185,8 +177,8 @@ router.get('/admin/stats', authenticate, isAdmin, async (req, res) => {
           byCupSize: [
             { $group: { 
               _id: '$cupSize',
-              count: { $sum: 1 },
-              totalUsage: { $sum: '$usageCount' }
+              total: { $sum: 1 },
+              used: { $sum: { $cond: ['$isUsed', 1, 0] } }
             }}
           ]
         }
@@ -195,8 +187,7 @@ router.get('/admin/stats', authenticate, isAdmin, async (req, res) => {
     
     const result = {
       total: stats[0].total[0]?.count || 0,
-      partiallyUsed: stats[0].partiallyUsed[0]?.count || 0,
-      fullyUsed: stats[0].fullyUsed[0]?.count || 0,
+      used: stats[0].used[0]?.count || 0,
       unused: stats[0].unused[0]?.count || 0,
       expired: stats[0].expired[0]?.count || 0,
       byCupSize: stats[0].byCupSize

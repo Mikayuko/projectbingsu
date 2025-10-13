@@ -1,5 +1,3 @@
-// backend/models/MenuCode.js - Fixed Version
-
 const mongoose = require('mongoose');
 
 const menuCodeSchema = new mongoose.Schema({
@@ -15,30 +13,29 @@ const menuCodeSchema = new mongoose.Schema({
     enum: ['S', 'M', 'L'],
     required: true
   },
-  usageCount: {
-    type: Number,
-    default: 0
+  // ✅ เปลี่ยนจาก usageCount เป็น order เดียว
+  order: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Order',
+    default: null
   },
-  maxUsage: {
-    type: Number,
-    default: 1  // ✅ เปลี่ยนจาก 5 เป็น 1 (ใช้ได้ครั้งเดียว)
+  isUsed: {
+    type: Boolean,
+    default: false
   },
   createdBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
     required: true
   },
-  usedBy: [{
-    order: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'Order'
-    },
-    usedAt: Date
-  }],
+  usedAt: {
+    type: Date,
+    default: null
+  },
   expiresAt: {
     type: Date,
     default: function() {
-      return new Date(Date.now() + 24 * 60 * 60 * 1000);
+      return new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 ชั่วโมง
     }
   },
   createdAt: {
@@ -84,8 +81,8 @@ menuCodeSchema.statics.createCode = async function(cupSize, createdBy) {
   return menuCode.save();
 };
 
-// ✅ Validate and use code - ใช้ได้ครั้งเดียวเท่านั้น
-menuCodeSchema.statics.validateAndUse = async function(code, orderId) {
+// ✅ Validate code - ตรวจสอบว่ายังไม่ถูกใช้
+menuCodeSchema.statics.validateCode = async function(code) {
   const menuCode = await this.findOne({ 
     code: code.toUpperCase()
   });
@@ -98,31 +95,54 @@ menuCodeSchema.statics.validateAndUse = async function(code, orderId) {
     throw new Error('Code has expired');
   }
   
-  // ✅ เช็คว่าใช้ไปแล้วหรือยัง (ต้องไม่เกิน 1)
-  if (menuCode.usageCount >= 1) {
-    throw new Error('This code has already been used');
+  if (menuCode.isUsed) {
+    throw new Error('Code has already been used');
   }
   
-  // ✅ ทำเครื่องหมายว่าใช้แล้ว
-  menuCode.usageCount = 1;
-  menuCode.usedBy.push({
-    order: orderId,
-    usedAt: new Date()
+  return menuCode;
+};
+
+// ✅ ใช้ code และเชื่อมกับ order
+menuCodeSchema.statics.useCode = async function(code, orderId) {
+  const menuCode = await this.findOne({ 
+    code: code.toUpperCase()
   });
-  menuCode.expiresAt = new Date(); // หมดอายุทันที
+  
+  if (!menuCode) {
+    throw new Error('Invalid code');
+  }
+  
+  if (menuCode.expiresAt < new Date()) {
+    throw new Error('Code has expired');
+  }
+  
+  if (menuCode.isUsed) {
+    throw new Error('Code has already been used');
+  }
+  
+  menuCode.isUsed = true;
+  menuCode.order = orderId;
+  menuCode.usedAt = new Date();
   
   await menuCode.save();
   return menuCode;
 };
 
-// ✅ Expire code immediately (ไม่ใช้แล้ว เพราะหมดอายุอัตโนมัติ)
-menuCodeSchema.statics.expireCode = async function(code) {
-  const menuCode = await this.findOne({ code: code.toUpperCase() });
+// ✅ ดึง order จาก code
+menuCodeSchema.statics.getOrderByCode = async function(code) {
+  const menuCode = await this.findOne({ 
+    code: code.toUpperCase()
+  }).populate('order');
   
-  if (menuCode) {
-    menuCode.expiresAt = new Date();
-    await menuCode.save();
+  if (!menuCode) {
+    throw new Error('Invalid code');
   }
+  
+  if (!menuCode.order) {
+    throw new Error('No order found for this code');
+  }
+  
+  return menuCode.order;
 };
 
 // Check if code can still be used
@@ -131,20 +151,17 @@ menuCodeSchema.methods.canBeUsed = function() {
     return { valid: false, reason: 'Code has expired' };
   }
   
-  if (this.usageCount >= this.maxUsage) {
+  if (this.isUsed) {
     return { valid: false, reason: 'Code has already been used' };
   }
   
-  return { 
-    valid: true, 
-    remainingUses: this.maxUsage - this.usageCount 
-  };
+  return { valid: true };
 };
 
-// Clean up expired codes
+// ✅ Clean up expired codes ที่ยังไม่ได้ใช้
 menuCodeSchema.statics.cleanupExpired = async function() {
   const result = await this.deleteMany({
-    usageCount: 0,
+    isUsed: false,
     expiresAt: { $lt: new Date() }
   });
   return result.deletedCount;

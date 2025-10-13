@@ -1,4 +1,4 @@
-// backend/models/Order.js - Fixed with better error handling
+// backend/models/Order.js - Final: ใช้ menuCode เป็น tracking code
 
 const mongoose = require('mongoose');
 
@@ -6,21 +6,19 @@ const orderSchema = new mongoose.Schema({
   orderId: {
     type: String,
     unique: true,
-    sparse: true // Allow null values for uniqueness
+    sparse: true
   },
   customerId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
     required: false
   },
+  // ✅ menuCode คือ tracking code
   menuCode: {
     type: String,
-    required: true
-  },
-  customerCode: {
-    type: String,
     required: true,
-    unique: true
+    unique: true, // ✅ ต้อง unique เพราะใช้ track
+    uppercase: true
   },
   cupSize: {
     type: String,
@@ -103,13 +101,13 @@ const orderSchema = new mongoose.Schema({
 orderSchema.pre('save', async function(next) {
   try {
     if (!this.orderId) {
-      // Generate orderId based on timestamp and random number to ensure uniqueness
       const timestamp = Date.now().toString(36).toUpperCase();
       const random = Math.random().toString(36).substr(2, 3).toUpperCase();
       this.orderId = `ORD${timestamp}${random}`;
       
       console.log('Generated orderId:', this.orderId);
     }
+    
     next();
   } catch (error) {
     console.error('Error in Order pre-save hook:', error);
@@ -122,21 +120,17 @@ orderSchema.methods.calculateTotal = function() {
   try {
     let total = this.pricing.basePrice || 60;
     
-    // Size pricing
     const sizePrices = { S: 0, M: 10, L: 20 };
     const sizePrice = sizePrices[this.cupSize] || 0;
     total += sizePrice;
     
-    // Toppings pricing (10 baht per topping)
     const toppingsPrice = (this.toppings?.length || 0) * 10;
     total += toppingsPrice;
     
-    // Update pricing object
     this.pricing.sizePrice = sizePrice;
     this.pricing.toppingsPrice = toppingsPrice;
     this.pricing.total = total;
     
-    // Apply free drink if applicable
     if (this.isFreeDrink) {
       this.pricing.total = 0;
     }
@@ -173,7 +167,7 @@ orderSchema.methods.updateStatus = function(newStatus) {
 };
 
 // Index for faster queries
-orderSchema.index({ customerCode: 1 });
+orderSchema.index({ menuCode: 1 }); // ✅ index สำหรับ tracking
 orderSchema.index({ customerId: 1 });
 orderSchema.index({ status: 1 });
 orderSchema.index({ createdAt: -1 });

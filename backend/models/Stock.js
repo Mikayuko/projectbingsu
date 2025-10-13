@@ -1,4 +1,4 @@
-// backend/models/Stock.js - Fixed Version
+// backend/models/Stock.js
 const mongoose = require('mongoose');
 
 const stockSchema = new mongoose.Schema({
@@ -99,10 +99,10 @@ stockSchema.statics.setStock = async function(itemType, name, quantity, reorderL
   return stock;
 };
 
-// ✅ เช็คสต๊อกใกล้หมด (น้อยกว่า reorder level เท่านั้น)
+// เช็คสต๊อกใกล้หมด
 stockSchema.statics.getLowStockItems = async function() {
   return this.find({
-    $expr: { $lt: ['$quantity', '$reorderLevel'] }  // ✅ เปลี่ยนจาก $lte เป็น $lt
+    $expr: { $lt: ['$quantity', '$reorderLevel'] }
   });
 };
 
