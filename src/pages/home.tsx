@@ -1,4 +1,5 @@
-// src/pages/home.tsx - Full MongoDB Integration
+// src/pages/home.tsx - Improved: Better image display for popular items
+
 import { useState, useEffect } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
@@ -80,19 +81,18 @@ export default function HomePage() {
   };
 
   const fetchRecentReviews = async () => {
-  try {
-    const result = await api.getReviews(1, 3);
-    setRecentReviews(result.reviews || []);
-    // ✅ อัพเดท rating จริงจาก database
-    if (result.stats) {
-      setAverageRating(result.stats.average || 0);
-      setTotalReviews(result.totalReviews || 0);
+    try {
+      const result = await api.getReviews(1, 3);
+      setRecentReviews(result.reviews || []);
+      if (result.stats) {
+        setAverageRating(result.stats.average || 0);
+        setTotalReviews(result.totalReviews || 0);
+      }
+    } catch (error) {
+      console.error('Failed to fetch reviews:', error);
+      setRecentReviews([]);
     }
-  } catch (error) {
-    console.error('Failed to fetch reviews:', error);
-    setRecentReviews([]);
-  }
-};
+  };
 
   const fetchStockStatus = async () => {
     try {
@@ -113,8 +113,6 @@ export default function HomePage() {
     try {
       const orderResult = await api.getOrderStats();
       setTotalOrders(orderResult.todayOrders || 0);
-      
-      // For menu codes, we'll use a placeholder
       setActiveCodes(10);
     } catch (error) {
       console.error('Failed to fetch stats:', error);
@@ -131,7 +129,6 @@ export default function HomePage() {
     setError('');
     
     try {
-      // Validate code with MongoDB
       const result = await api.validateMenuCode(menuCode.toUpperCase());
       
       if (result.valid) {
@@ -177,11 +174,11 @@ export default function HomePage() {
               </p>
             </div>
             <div className="bg-white/20 backdrop-blur-sm px-4 py-2 rounded-lg">
-  <span className="text-white font-['Iceland'] text-sm">⭐ Rating</span>
-  <p className="text-white font-bold text-xl">
-    {averageRating > 0 ? averageRating.toFixed(1) : '—'}/5
-  </p>
-</div>
+              <span className="text-white font-['Iceland'] text-sm">⭐ Rating</span>
+              <p className="text-white font-bold text-xl">
+                {averageRating > 0 ? averageRating.toFixed(1) : '—'}/5
+              </p>
+            </div>
           </div>
           
           {/* Special Offer Badge */}
@@ -191,7 +188,7 @@ export default function HomePage() {
         </div>
       </div>
 
-      {/* Stock Alert (if any items are out) */}
+      {/* Stock Alert */}
       {stockStatus.outOfStock > 0 && (
         <div className="max-w-6xl mx-auto px-4 mb-8">
           <div className="bg-red-50 border-2 border-red-200 rounded-lg p-4 text-center">
@@ -203,7 +200,7 @@ export default function HomePage() {
         </div>
       )}
 
-      {/* Popular Items Section (MongoDB Data) */}
+      {/* Popular Items Section */}
       {popularItems.length > 0 && (
         <div className="max-w-6xl mx-auto px-4 mb-16">
           <h2 className="text-4xl text-[#69806C] font-['Iceland'] mb-8 text-center drop-shadow">
@@ -213,11 +210,11 @@ export default function HomePage() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             {popularItems.map((item, idx) => (
               <div key={idx} className="bg-white rounded-2xl shadow-xl overflow-hidden transform hover:scale-105 transition duration-300">
-                <div className="relative h-64">
+                <div className="relative h-80">
                   <img 
                     src={item.image} 
                     alt={item.flavor}
-                    className="w-full h-full object-cover"
+                    className="w-full h-full object-cover object-[center_60%]"
                   />
                   <div className="absolute top-4 right-4 bg-red-500 text-white px-3 py-1 rounded-full font-['Iceland'] text-sm">
                     #{idx + 1} Best Seller
@@ -237,7 +234,7 @@ export default function HomePage() {
         </div>
       )}
 
-      {/* Order Now Section with MongoDB Validation */}
+      {/* Order Now Section */}
       <div className="w-full bg-[#947E5A] py-16 px-4 mb-12">
         <div className="max-w-4xl mx-auto">
           <h2 className="text-4xl text-white font-['Iceland'] mb-4 text-center drop-shadow">
@@ -248,7 +245,7 @@ export default function HomePage() {
           </p>
 
           {error && (
-            <div className="max-w-xl mx-auto mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded font-['Iceland']">
+            <div className="max-w-xl mx-auto mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded font-['Iceland'] text-sm">
               {error}
             </div>
           )}
@@ -293,7 +290,7 @@ export default function HomePage() {
         </div>
       </div>
 
-      {/* Recent Reviews Section (MongoDB Data) */}
+      {/* Recent Reviews Section */}
       {recentReviews.length > 0 && (
         <div className="max-w-6xl mx-auto px-4 mb-16">
           <h2 className="text-4xl text-[#69806C] font-['Iceland'] mb-8 text-center drop-shadow">
@@ -331,7 +328,7 @@ export default function HomePage() {
         </div>
       )}
 
-      {/* Gallery Preview - Connected to Stock Status */}
+      {/* Gallery Preview */}
       <div className="max-w-6xl mx-auto px-4 mb-16">
         <h2 className="text-4xl text-[#69806C] font-['Iceland'] mb-8 text-center drop-shadow">
           📸 Our Delicious Menu
@@ -346,7 +343,7 @@ export default function HomePage() {
         </div>
       </div>
 
-      {/* Features Grid with Live Data */}
+      {/* Features Grid */}
       <div className="max-w-6xl mx-auto px-4 mb-16">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
           <div className="bg-white rounded-xl shadow-lg p-6 text-center hover:shadow-2xl transition">
@@ -375,7 +372,7 @@ export default function HomePage() {
             <div className="text-5xl mb-3">🌟</div>
             <h3 className="text-xl font-['Iceland'] text-[#69806C] mb-2">Top Rated</h3>
             <p className="text-gray-600 font-['Iceland'] text-sm">
-              {recentReviews.length > 0 ? `${recentReviews.length}+ reviews today` : '500+ reviews'}
+              {totalReviews > 0 ? `${totalReviews} reviews` : '500+ reviews'}
             </p>
           </div>
         </div>
@@ -387,9 +384,7 @@ export default function HomePage() {
           <p className="font-['Iceland'] text-lg mb-2">
             © 2025 Bingsu Order Management System
           </p>
-          <p className="font-['Iceland'] text-sm opacity-70">
-            Connected to MongoDB Atlas Cloud Database
-          </p>
+          
         </div>
       </div>
     </div>

@@ -1,4 +1,4 @@
-// src/pages/order/index.tsx - Final: Track ด้วย menuCode
+// src/pages/order/index.tsx - Complete: Manual Refresh Only
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
@@ -8,7 +8,7 @@ import { api, getCurrentUser, isAuthenticated } from '@/utils/api';
 interface Order {
   _id: string;
   orderId: string;
-  menuCode: string; // ✅ ใช้ menuCode เป็น tracking
+  menuCode: string;
   cupSize: string;
   shavedIce: { flavor: string };
   toppings: Array<{ name: string }>;
@@ -20,7 +20,7 @@ interface Order {
 
 export default function OrderHubPage() {
   const router = useRouter();
-  const { code } = router.query; // ✅ รับ code จาก URL
+  const { code } = router.query;
   const [trackingCode, setTrackingCode] = useState('');
   const [myOrders, setMyOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(false);
@@ -29,10 +29,9 @@ export default function OrderHubPage() {
 
   const [trackedOrder, setTrackedOrder] = useState<Order | null>(null);
   const [trackError, setTrackError] = useState('');
-  const [autoRefresh, setAutoRefresh] = useState(true);
+  const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
 
   useEffect(() => {
-    // ✅ ถ้ามี code จาก URL ให้ track ทันที
     if (code && typeof code === 'string') {
       setTrackingCode(code.toUpperCase());
       handleTrack(code.toUpperCase());
@@ -44,15 +43,6 @@ export default function OrderHubPage() {
       fetchMyOrders();
     }
   }, [activeTab]);
-
-  useEffect(() => {
-    if (trackedOrder && autoRefresh && trackedOrder.status !== 'Completed' && trackedOrder.status !== 'Cancelled') {
-      const interval = setInterval(() => {
-        trackOrderSilent(trackedOrder.menuCode);
-      }, 10000);
-      return () => clearInterval(interval);
-    }
-  }, [trackedOrder, autoRefresh]);
 
   const fetchMyOrders = async () => {
     setLoading(true);
@@ -80,12 +70,10 @@ export default function OrderHubPage() {
     setTrackedOrder(null);
 
     try {
-      console.log('🔍 Tracking order with code:', cleanCode);
       const result = await api.trackOrder(cleanCode);
       setTrackedOrder(result.order);
-      console.log('✅ Order found:', result.order);
+      setLastRefresh(new Date());
     } catch (err: any) {
-      console.error('❌ Track error:', err);
       if (err.message.includes('404') || err.message.includes('not found')) {
         setTrackError('Order not found. Please check your tracking code.');
       } else {
@@ -97,12 +85,9 @@ export default function OrderHubPage() {
     }
   };
 
-  const trackOrderSilent = async (code: string) => {
-    try {
-      const result = await api.trackOrder(code);
-      setTrackedOrder(result.order);
-    } catch (error) {
-      console.error('Silent track failed:', error);
+  const handleRefreshNow = async () => {
+    if (trackedOrder) {
+      await handleTrack(trackedOrder.menuCode);
     }
   };
 
@@ -199,9 +184,9 @@ export default function OrderHubPage() {
               </h3>
               
               <div className="max-w-2xl mx-auto">
-                <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                  <p className="text-sm text-blue-800 font-['Iceland']">
-                    💡 Your tracking code is the <strong>same as your menu code</strong> (e.g., ABC12)
+                <div className="mb-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
+                  <p className="text-sm text-blue-800 font-['Iceland'] text-center">
+                    💡 Your tracking code is the same as your menu code
                   </p>
                 </div>
 
@@ -213,7 +198,7 @@ export default function OrderHubPage() {
                       setTrackingCode(e.target.value.toUpperCase());
                       setTrackError('');
                     }}
-                    placeholder="Enter your menu code (XXXXX)"
+                    placeholder="Enter menu code"
                     className="flex-1 p-4 text-xl font-['Iceland'] border-2 border-[#69806C] rounded-lg focus:outline-none focus:border-[#5a6e5e] uppercase"
                     onKeyPress={(e) => e.key === 'Enter' && handleTrack()}
                     maxLength={5}
@@ -229,7 +214,7 @@ export default function OrderHubPage() {
                 </div>
 
                 {trackError && (
-                  <div className="p-3 bg-red-100 border border-red-400 text-red-700 rounded font-['Iceland']">
+                  <div className="p-3 bg-red-50 border border-red-200 text-red-700 rounded font-['Iceland'] text-sm">
                     {trackError}
                   </div>
                 )}
@@ -246,17 +231,22 @@ export default function OrderHubPage() {
                   </p>
                 </div>
 
+                {/* Refresh Button */}
                 {trackedOrder.status !== 'Completed' && trackedOrder.status !== 'Cancelled' && (
-                  <div className="mb-6 p-4 bg-gray-50 rounded-lg">
-                    <label className="flex items-center gap-2 justify-center">
-                      <input
-                        type="checkbox"
-                        checked={autoRefresh}
-                        onChange={(e) => setAutoRefresh(e.target.checked)}
-                        className="w-4 h-4"
-                      />
-                      <span className="text-gray-700 font-['Iceland']">Auto-refresh every 10 seconds</span>
-                    </label>
+                  <div className="mb-6 text-center">
+                    <button
+                      onClick={handleRefreshNow}
+                      disabled={loading}
+                      className="px-6 py-3 bg-[#69806C] text-white rounded-lg font-['Iceland'] hover:bg-[#5a6e5e] transition disabled:opacity-50 inline-flex items-center gap-2"
+                    >
+  
+                      <span className='text-xl'>Refresh Status</span>
+                    </button>
+                    {lastRefresh && (
+                      <p className="text-sm text-gray-500 font-['Iceland'] mt-2">
+                        Last updated: {lastRefresh.toLocaleTimeString('th-TH')}
+                      </p>
+                    )}
                   </div>
                 )}
 
@@ -288,19 +278,19 @@ export default function OrderHubPage() {
                   <h4 className="text-xl text-[#69806C] font-['Iceland'] mb-4">Order Details</h4>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-lg font-['Iceland']">
                     <div>
-                      <p className="text-gray-600">Tracking Code:</p>
+                      <p className="text-gray-600 text-sm">Tracking Code</p>
                       <p className="font-bold text-[#543429]">{trackedOrder.menuCode}</p>
                     </div>
                     <div>
-                      <p className="text-gray-600">Cup Size:</p>
+                      <p className="text-gray-600 text-sm">Cup Size</p>
                       <p className="font-bold text-[#543429]">{trackedOrder.cupSize}</p>
                     </div>
                     <div>
-                      <p className="text-gray-600">Flavor:</p>
+                      <p className="text-gray-600 text-sm">Flavor</p>
                       <p className="font-bold text-[#543429]">{trackedOrder.shavedIce.flavor}</p>
                     </div>
                     <div>
-                      <p className="text-gray-600">Toppings:</p>
+                      <p className="text-gray-600 text-sm">Toppings</p>
                       <p className="font-bold text-[#543429]">
                         {trackedOrder.toppings.length > 0 
                           ? trackedOrder.toppings.map(t => t.name).join(', ')
@@ -308,12 +298,12 @@ export default function OrderHubPage() {
                       </p>
                     </div>
                     <div>
-                      <p className="text-gray-600">Total Price:</p>
+                      <p className="text-gray-600 text-sm">Total Price</p>
                       <p className="text-2xl font-bold text-[#543429]">฿{trackedOrder.pricing.total}</p>
                     </div>
                     <div>
-                      <p className="text-gray-600">Ordered At:</p>
-                      <p className="text-[#543429]">
+                      <p className="text-gray-600 text-sm">Ordered At</p>
+                      <p className="text-[#543429] text-sm">
                         {new Date(trackedOrder.createdAt).toLocaleString('th-TH')}
                       </p>
                     </div>
@@ -321,7 +311,7 @@ export default function OrderHubPage() {
                   
                   {trackedOrder.specialInstructions && (
                     <div className="mt-4">
-                      <p className="text-gray-600 font-['Iceland']">Special Instructions:</p>
+                      <p className="text-gray-600 font-['Iceland'] text-sm">Special Instructions</p>
                       <p className="bg-gray-50 p-3 rounded-lg mt-1 font-['Iceland']">
                         {trackedOrder.specialInstructions}
                       </p>
@@ -330,11 +320,11 @@ export default function OrderHubPage() {
                 </div>
 
                 {trackedOrder.status === 'Ready' && (
-                  <div className="mt-6 p-4 bg-green-50 border-2 border-green-200 rounded-lg animate-pulse">
-                    <p className="text-green-800 font-['Iceland'] text-xl font-bold">
+                  <div className="mt-6 p-4 bg-green-50 border-2 border-green-200 rounded-lg">
+                    <p className="text-green-800 font-['Iceland'] text-xl font-bold text-center">
                       🎉 Your order is ready for pickup!
                     </p>
-                    <p className="text-green-700 text-sm mt-1 font-['Iceland']">
+                    <p className="text-green-700 text-sm mt-1 font-['Iceland'] text-center">
                       Please come to the counter with code: <strong>{trackedOrder.menuCode}</strong>
                     </p>
                   </div>
@@ -345,6 +335,7 @@ export default function OrderHubPage() {
                     onClick={() => {
                       setTrackedOrder(null);
                       setTrackingCode('');
+                      setLastRefresh(null);
                     }}
                     className="px-6 py-3 border-2 border-[#69806C] text-[#69806C] rounded-lg font-['Iceland'] hover:bg-[#69806C] hover:text-white transition"
                   >
@@ -369,8 +360,8 @@ export default function OrderHubPage() {
                   </h4>
                   <ol className="text-sm text-yellow-700 font-['Iceland'] space-y-2">
                     <li>1. Get your menu code when ordering</li>
-                    <li>2. Enter the code above (e.g., ABC12)</li>
-                    <li>3. Click "Track" to see real-time status</li>
+                    <li>2. Enter the code above</li>
+                    <li>3. Click Track to see status</li>
                   </ol>
                 </div>
                 
@@ -463,7 +454,7 @@ export default function OrderHubPage() {
                       </div>
                     )}
 
-                    <div className="flex gap-2">
+                    <div className="flex gap-2 flex-wrap">
                       <button
                         onClick={() => {
                           setActiveTab('track');

@@ -1,4 +1,4 @@
-// src/pages/admin/sales-report/index.tsx - แสดงทั้งหมด เรียงมาก→น้อย + เพิ่มเวลา
+// src/pages/admin/sales-report/index.tsx - Complete with proper ranking and custom scrollbar
 
 'use client';
 
@@ -29,11 +29,19 @@ interface SalesData {
 interface TopItem {
   name: string;
   count: number;
+  rank?: number;
 }
 
 interface PeakTime {
   timeRange: string;
   count: number;
+  rank?: number;
+}
+
+interface TopCombo {
+  combo: string;
+  count: number;
+  rank?: number;
 }
 
 export default function SalesReportPage() {
@@ -49,7 +57,7 @@ export default function SalesReportPage() {
     topFlavors: [] as TopItem[],
     topToppings: [] as TopItem[],
     peakTimes: [] as PeakTime[],
-    topCombinations: [] as { combo: string; count: number }[],
+    topCombinations: [] as TopCombo[],
     completionRate: 0
   });
 
@@ -96,7 +104,7 @@ export default function SalesReportPage() {
       }
     });
 
-    // ✅ Group by date AND time
+    // Group by date AND time
     const groupedData: { [key: string]: Order[] } = {};
     filteredOrders.forEach(order => {
       const orderDate = new Date(order.createdAt);
@@ -125,18 +133,27 @@ export default function SalesReportPage() {
     const totalOrders = filteredOrders.length;
     const totalRevenue = filteredOrders.reduce((sum, order) => sum + (order.pricing?.total || 0), 0);
 
-    // ✅ Top Flavors - แสดงทั้งหมดเรียงจากมาก→น้อย
+    // Top Flavors with ranking
     const flavorCount: { [key: string]: number } = {};
     filteredOrders.forEach(order => {
       const flavor = order.shavedIce?.flavor || 'Unknown';
       flavorCount[flavor] = (flavorCount[flavor] || 0) + 1;
     });
     
-    const topFlavors = Object.entries(flavorCount)
+    const flavorsSorted = Object.entries(flavorCount)
       .map(([name, count]) => ({ name, count }))
-      .sort((a, b) => b.count - a.count); // เรียงมาก→น้อย
+      .sort((a, b) => b.count - a.count);
+    
+    const topFlavors: TopItem[] = [];
+    let currentRank = 1;
+    for (let i = 0; i < flavorsSorted.length; i++) {
+      if (i > 0 && flavorsSorted[i].count !== flavorsSorted[i - 1].count) {
+        currentRank++;
+      }
+      topFlavors.push({ ...flavorsSorted[i], rank: currentRank });
+    }
 
-    // ✅ Top Toppings - แสดงทั้งหมดเรียงจากมาก→น้อย
+    // Top Toppings with proper ranking
     const toppingCount: { [key: string]: number } = {};
     filteredOrders.forEach(order => {
       order.toppings?.forEach(topping => {
@@ -144,11 +161,20 @@ export default function SalesReportPage() {
       });
     });
     
-    const topToppings = Object.entries(toppingCount)
+    const toppingsSorted = Object.entries(toppingCount)
       .map(([name, count]) => ({ name, count }))
-      .sort((a, b) => b.count - a.count); // เรียงมาก→น้อย
+      .sort((a, b) => b.count - a.count);
+    
+    const topToppings: TopItem[] = [];
+    let toppingRank = 1;
+    for (let i = 0; i < toppingsSorted.length; i++) {
+      if (i > 0 && toppingsSorted[i].count !== toppingsSorted[i - 1].count) {
+        toppingRank++;
+      }
+      topToppings.push({ ...toppingsSorted[i], rank: toppingRank });
+    }
 
-    // ✅ Peak Times - แสดงทั้งหมดเรียงจากมาก→น้อย
+    // Peak Times with ranking
     const hourCount: { [key: string]: number } = {};
     filteredOrders.forEach(order => {
       const hour = new Date(order.createdAt).getHours();
@@ -156,11 +182,20 @@ export default function SalesReportPage() {
       hourCount[timeRange] = (hourCount[timeRange] || 0) + 1;
     });
     
-    const peakTimes = Object.entries(hourCount)
+    const peakTimesSorted = Object.entries(hourCount)
       .map(([timeRange, count]) => ({ timeRange, count }))
-      .sort((a, b) => b.count - a.count); // เรียงมาก→น้อย
+      .sort((a, b) => b.count - a.count);
+    
+    const peakTimes: PeakTime[] = [];
+    let peakRank = 1;
+    for (let i = 0; i < peakTimesSorted.length; i++) {
+      if (i > 0 && peakTimesSorted[i].count !== peakTimesSorted[i - 1].count) {
+        peakRank++;
+      }
+      peakTimes.push({ ...peakTimesSorted[i], rank: peakRank });
+    }
 
-    // Top Combinations
+    // Top Combinations with ranking
     const comboCount: { [key: string]: number } = {};
     filteredOrders.forEach(order => {
       const toppings = order.toppings?.map(t => t.name).sort().join(', ') || 'No toppings';
@@ -168,10 +203,19 @@ export default function SalesReportPage() {
       comboCount[combo] = (comboCount[combo] || 0) + 1;
     });
     
-    const topCombinations = Object.entries(comboCount)
+    const combosSorted = Object.entries(comboCount)
       .map(([combo, count]) => ({ combo, count }))
       .sort((a, b) => b.count - a.count)
       .slice(0, 5);
+    
+    const topCombinations: TopCombo[] = [];
+    let comboRank = 1;
+    for (let i = 0; i < combosSorted.length; i++) {
+      if (i > 0 && combosSorted[i].count !== combosSorted[i - 1].count) {
+        comboRank++;
+      }
+      topCombinations.push({ ...combosSorted[i], rank: comboRank });
+    }
 
     // Completion rate
     const completedOrders = filteredOrders.filter(order => order.status === 'Completed').length;
@@ -203,18 +247,18 @@ export default function SalesReportPage() {
     csv += `Completion Rate,${summary.completionRate.toFixed(1)}%\n\n`;
     
     csv += 'Top Flavors (All)\n';
-    summary.topFlavors.forEach((f, i) => {
-      csv += `${i + 1}. ${f.name},${f.count}\n`;
+    summary.topFlavors.forEach((f) => {
+      csv += `${f.rank}. ${f.name},${f.count}\n`;
     });
     
     csv += '\nTop Toppings (All)\n';
-    summary.topToppings.forEach((t, i) => {
-      csv += `${i + 1}. ${t.name},${t.count}\n`;
+    summary.topToppings.forEach((t) => {
+      csv += `${t.rank}. ${t.name},${t.count}\n`;
     });
     
     csv += '\nPeak Times (All)\n';
-    summary.peakTimes.forEach((p, i) => {
-      csv += `${i + 1}. ${p.timeRange},${p.count}\n`;
+    summary.peakTimes.forEach((p) => {
+      csv += `${p.rank}. ${p.timeRange},${p.count}\n`;
     });
     
     const dataUri = 'data:text/csv;charset=utf-8,\uFEFF' + encodeURIComponent(csv);
@@ -228,6 +272,35 @@ export default function SalesReportPage() {
 
   return (
     <div className="min-h-screen bg-[#EBE6DE] font-['Iceland']">
+      <style jsx global>{`
+        /* Custom Scrollbar Design */
+        .custom-scrollbar::-webkit-scrollbar {
+          width: 8px;
+          height: 8px;
+        }
+        
+        .custom-scrollbar::-webkit-scrollbar-track {
+          background: rgba(255, 255, 255, 0.1);
+          border-radius: 10px;
+        }
+        
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+          background: rgba(255, 255, 255, 0.5);
+          border-radius: 10px;
+          transition: background 0.3s ease;
+        }
+        
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+          background: rgba(255, 255, 255, 0.7);
+        }
+
+        /* For Firefox */
+        .custom-scrollbar {
+          scrollbar-width: thin;
+          scrollbar-color: rgba(255, 255, 255, 0.5) rgba(255, 255, 255, 0.1);
+        }
+      `}</style>
+
       <div className="w-full h-[80px] bg-[#69806C] flex items-center px-6 shadow-lg">
         <Link href="/admin">
           <div className="text-white text-2xl hover:opacity-80 cursor-pointer">{'<'}</div>
@@ -284,12 +357,12 @@ export default function SalesReportPage() {
             {/* Top Insights */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
               <div className="bg-gradient-to-br from-[#69806C] to-[#947E5A] rounded-lg shadow-xl p-6 text-white">
-                <h3 className="text-2xl font-bold mb-4">🍧 Top Flavors (All)</h3>
+                <h3 className="text-2xl font-bold mb-4">🍧 Top Flavors</h3>
                 {summary.topFlavors.length > 0 ? (
-                  <div className="space-y-2 max-h-64 overflow-y-auto">
+                  <div className="space-y-2 max-h-64 overflow-y-auto custom-scrollbar">
                     {summary.topFlavors.map((flavor, idx) => (
                       <div key={idx} className="bg-white/20 backdrop-blur-sm rounded-lg p-3 flex justify-between items-center">
-                        <span className="font-bold">#{idx + 1} {flavor.name}</span>
+                        <span className="font-bold">#{flavor.rank} {flavor.name}</span>
                         <span className="text-xl font-bold">{flavor.count}</span>
                       </div>
                     ))}
@@ -300,12 +373,12 @@ export default function SalesReportPage() {
               </div>
 
               <div className="bg-gradient-to-br from-[#947E5A] to-[#69806C] rounded-lg shadow-xl p-6 text-white">
-                <h3 className="text-2xl font-bold mb-4">🍓 Top Toppings (All)</h3>
+                <h3 className="text-2xl font-bold mb-4">🍓 Top Toppings</h3>
                 {summary.topToppings.length > 0 ? (
-                  <div className="space-y-2 max-h-64 overflow-y-auto">
+                  <div className="space-y-2 max-h-64 overflow-y-auto custom-scrollbar">
                     {summary.topToppings.map((topping, idx) => (
                       <div key={idx} className="bg-white/20 backdrop-blur-sm rounded-lg p-3 flex justify-between items-center">
-                        <span className="font-bold">#{idx + 1} {topping.name}</span>
+                        <span className="font-bold">#{topping.rank} {topping.name}</span>
                         <span className="text-xl font-bold">{topping.count}</span>
                       </div>
                     ))}
@@ -316,12 +389,12 @@ export default function SalesReportPage() {
               </div>
 
               <div className="bg-gradient-to-br from-[#69806C] to-[#947E5A] rounded-lg shadow-xl p-6 text-white">
-                <h3 className="text-2xl font-bold mb-4">⏰ Peak Times (All)</h3>
+                <h3 className="text-2xl font-bold mb-4">⏰ Peak Times</h3>
                 {summary.peakTimes.length > 0 ? (
-                  <div className="space-y-2 max-h-64 overflow-y-auto">
+                  <div className="space-y-2 max-h-64 overflow-y-auto custom-scrollbar">
                     {summary.peakTimes.map((peak, idx) => (
                       <div key={idx} className="bg-white/20 backdrop-blur-sm rounded-lg p-3 flex justify-between items-center">
-                        <span className="font-bold">{peak.timeRange}</span>
+                        <span className="font-bold">#{peak.rank} {peak.timeRange}</span>
                         <span className="text-xl font-bold">{peak.count}</span>
                       </div>
                     ))}
@@ -340,7 +413,7 @@ export default function SalesReportPage() {
                   {summary.topCombinations.map((combo, idx) => (
                     <div key={idx} className="flex justify-between items-center border-b pb-2">
                       <div className="flex items-center gap-3">
-                        <span className="text-2xl font-bold text-[#947E5A]">#{idx + 1}</span>
+                        <span className="text-2xl font-bold text-[#947E5A]">#{combo.rank}</span>
                         <span className="text-lg">{combo.combo}</span>
                       </div>
                       <span className="text-xl font-bold text-[#69806C]">{combo.count}</span>

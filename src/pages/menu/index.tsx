@@ -1,4 +1,4 @@
-// src/pages/menu/index.tsx - Final: ใช้ menuCode เป็น tracking code
+// src/pages/menu/index.tsx - Improved: Better topping layout and images
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
@@ -29,7 +29,7 @@ export default function MenuPage() {
   const [error, setError] = useState('');
   const [showOrderForm, setShowOrderForm] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
-  const [trackingCode, setTrackingCode] = useState(''); // ✅ ใช้ menuCode เป็น tracking
+  const [trackingCode, setTrackingCode] = useState('');
   const [validating, setValidating] = useState(false);
   
   const [availableFlavors, setAvailableFlavors] = useState<MenuItem[]>([]);
@@ -221,7 +221,6 @@ export default function MenuPage() {
 
       const result = await api.createOrder(orderData);
       
-      // ✅ ใช้ menuCode เป็น tracking code
       setTrackingCode(result.trackingCode || menuCode.toUpperCase());
       setShowSuccessModal(true);
       
@@ -260,7 +259,7 @@ export default function MenuPage() {
           <h2 className="text-2xl text-[#69806C] font-['Iceland'] mb-4 text-center">
             {error || 'No Menu Code Detected'}
           </h2>
-          <p className="text-gray-600 font-['Iceland'] mb-6 text-center">
+          <p className="text-gray-600 font-['Iceland'] mb-6 text-center text-sm">
             Please enter a valid menu code from the home page
           </p>
           <Link href="/home">
@@ -293,16 +292,15 @@ export default function MenuPage() {
 
       <div className="max-w-6xl mx-auto px-4 py-8">
         {error && (
-          <div className="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded font-['Iceland']">
+          <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded font-['Iceland'] text-sm">
             {error}
           </div>
         )}
 
-        {/* ✅ แจ้งเตือนว่า code นี้จะใช้ track order */}
-        <div className="mb-6 p-4 bg-blue-50 border-2 border-blue-200 rounded-lg">
-          <p className="text-blue-800 font-['Iceland'] text-center">
-            💡 <strong>Your tracking code: {menuCode}</strong><br/>
-            Use this code to track your order after placing it
+        {/* Info Box */}
+        <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+          <p className="text-blue-800 font-['Iceland'] text-center text-sm">
+            💡 <strong>Your tracking code: {menuCode}</strong> - Use this code to track your order after placing it
           </p>
         </div>
 
@@ -343,9 +341,14 @@ export default function MenuPage() {
                         Only {flavor.stock} left!
                       </div>
                     )}
-                    <div className="h-48 relative">
-                      <img src={flavor.image} alt={flavor.name} className="w-full h-full object-cover" />
-                    </div>
+                    <div className="h-80 relative overflow-hidden">
+  <img 
+    src={flavor.image} 
+    alt={flavor.name} 
+    className="w-full h-full object-cover object-[center_60%]"
+    style={{ objectPosition: 'center 70%' }}
+  />
+</div>
                     <div className="p-6">
                       <h4 className="text-2xl font-['Iceland'] mb-2 text-center" style={{ color: flavor.color }}>
                         {flavor.name}
@@ -360,49 +363,55 @@ export default function MenuPage() {
               </div>
             </div>
 
-            {/* Toppings Selection */}
+            {/* Toppings Selection - Centered 5 items */}
             <div className="mb-12">
               <h3 className="text-3xl text-[#69806C] mb-6 text-center font-['Iceland']">
                 Step 2: Select Toppings (Max 3, Optional)
               </h3>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                {availableToppings.map((topping) => (
-                  <div
-                    key={topping.name}
-                    onClick={() => toggleTopping(topping)}
-                    className={`cursor-pointer rounded-lg border-2 transition text-center bg-white overflow-hidden relative ${
-                      !topping.available ? 'opacity-50 cursor-not-allowed' : ''
-                    } ${
-                      selectedToppings.find(t => t.name === topping.name)
-                        ? 'border-[#69806C] shadow-lg transform scale-105'
-                        : 'border-gray-300 hover:border-[#69806C] hover:shadow-md'
-                    }`}
-                  >
-                    {!topping.available && (
-                      <div className="absolute inset-0 bg-black/50 flex items-center justify-center z-10">
-                        <span className="bg-red-600 text-white px-2 py-1 rounded text-xs font-['Iceland']">
-                          Out of Stock
-                        </span>
-                      </div>
-                    )}
-                    {topping.stock !== undefined && topping.stock <= 10 && topping.available && (
-                      <div className="absolute top-1 right-1 bg-yellow-500 text-white px-1 py-0.5 rounded text-xs font-['Iceland'] z-10">
-                        {topping.stock} left
-                      </div>
-                    )}
-                    <div className="h-20 relative">
-                      <img src={topping.image} alt={topping.name} className="w-full h-full object-cover" />
-                    </div>
-                    <div className="p-2">
-                      <h4 className="text-lg font-['Iceland']" style={{ color: topping.textColor }}>
-                        {topping.name}
-                      </h4>
-                      {selectedToppings.find(t => t.name === topping.name) && (
-                        <div className="mt-1 text-green-600 font-bold">✓</div>
+              <div className="flex justify-center">
+                <div className="grid grid-cols-5 gap-6  min-w-[1rem]  cursor-pointer rounded-lg border-2 ">
+                  {availableToppings.map((topping) => (
+                    <div
+                      key={topping.name}
+                      onClick={() => toggleTopping(topping)}
+                      className={`cursor-pointer rounded-lg border-2 transition text-center bg-white overflow-hidden relative ${
+                        !topping.available ? 'opacity-50 cursor-not-allowed' : ''
+                      } ${
+                        selectedToppings.find(t => t.name === topping.name)
+                          ? 'border-[#69806C] shadow-lg transform scale-105'
+                          : 'border-gray-300 hover:border-[#69806C] hover:shadow-md'
+                      }`}
+                    >
+                      {!topping.available && (
+                        <div className="absolute inset-0 bg-black/50 flex items-center justify-center z-10">
+                          <span className="bg-red-600 text-white px-2 py-1 rounded text-xs font-['Iceland']">
+                            Out
+                          </span>
+                        </div>
                       )}
+                      {topping.stock !== undefined && topping.stock <= 10 && topping.available && (
+                        <div className="absolute top-1 right-1 bg-yellow-500 text-white px-1 py-0.5 rounded text-xs font-['Iceland'] z-10">
+                          {topping.stock}
+                        </div>
+                      )}
+                      <div className="h-40 relative p-2">
+                        <img 
+                          src={topping.image} 
+                          alt={topping.name} 
+                          className="w-full h-full object-contain"
+                        />
+                      </div>
+                      <div className="p-2">
+                        <h4 className="text-lg font-['Iceland']" style={{ color: topping.textColor }}>
+                          {topping.name}
+                        </h4>
+                        {selectedToppings.find(t => t.name === topping.name) && (
+                          <div className="mt-1 text-green-600 font-bold">✓</div>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
             </div>
 
@@ -425,10 +434,10 @@ export default function MenuPage() {
             <div className="bg-white rounded-lg shadow-lg p-6 mb-8">
               <h3 className="text-2xl text-[#69806C] font-['Iceland'] mb-4">Order Summary</h3>
               <div className="space-y-2 text-lg font-['Iceland']">
-                <p>Tracking Code: <span className="font-bold text-blue-600">{menuCode}</span></p>
-                <p>Size: <span className="font-bold">{cupSize}</span></p>
-                <p>Flavor: <span className="font-bold">{selectedFlavor?.name || 'Not selected'}</span></p>
-                <p>Toppings: <span className="font-bold">
+                <p className="text-sm"><span className="text-gray-600">Tracking Code:</span> <span className="font-bold text-blue-600">{menuCode}</span></p>
+                <p className="text-sm"><span className="text-gray-600">Size:</span> <span className="font-bold">{cupSize}</span></p>
+                <p className="text-sm"><span className="text-gray-600">Flavor:</span> <span className="font-bold">{selectedFlavor?.name || 'Not selected'}</span></p>
+                <p className="text-sm"><span className="text-gray-600">Toppings:</span> <span className="font-bold">
                   {selectedToppings.length > 0 ? selectedToppings.map(t => t.name).join(', ') : 'None'}
                 </span></p>
                 <div className="border-t pt-2 mt-2">

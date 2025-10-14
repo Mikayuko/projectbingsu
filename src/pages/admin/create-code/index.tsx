@@ -229,11 +229,7 @@ export default function CreateCodePage() {
               Generate Another Code
             </button>
             
-            <Link href="/admin/orders">
-              <button className="bg-blue-500 text-white text-xl px-8 py-3 rounded-xl shadow-md hover:scale-105 transition font-['Iceland']">
-                View Orders
-              </button>
-            </Link>
+           
           </div>
 
           {/* Copy to Clipboard */}

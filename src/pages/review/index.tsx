@@ -1,4 +1,4 @@
-// src/pages/review/index.tsx
+// src/pages/review/index.tsx - Fixed: Hide reviewed orders + No hydration error
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -27,8 +27,10 @@ export default function ReviewPage() {
   const [canReview, setCanReview] = useState(false);
   const [completedOrders, setCompletedOrders] = useState<any[]>([]);
   const [selectedOrder, setSelectedOrder] = useState<any>(null);
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
+    setMounted(true);
     fetchReviews();
     checkIfCanReview();
   }, []);
@@ -60,7 +62,19 @@ export default function ReviewPage() {
       }
 
       const result = await api.getMyOrders();
-      const completed = result.orders.filter((o: any) => o.status === 'Completed');
+      const reviews = await api.getReviews(1, 100);
+      
+      // ✅ Get reviewed order IDs
+      const reviewedOrderIds = new Set(
+        reviews.reviews
+          .filter((r: any) => r.order?._id)
+          .map((r: any) => r.order._id)
+      );
+      
+      // ✅ Filter out completed orders that haven't been reviewed
+      const completed = result.orders.filter(
+        (o: any) => o.status === 'Completed' && !reviewedOrderIds.has(o._id)
+      );
       
       if (completed.length > 0) {
         setCanReview(true);
@@ -135,13 +149,18 @@ export default function ReviewPage() {
     ? customerReviews.reduce((sum, r) => sum + r.rating, 0) / customerReviews.length
     : 0;
 
+  // ✅ Prevent hydration error
+  if (!mounted) {
+    return null;
+  }
+
   return (
     <div className="relative w-full min-h-screen bg-[#EBE6DE] px-4 md:px-10 lg:px-20 py-10">
       <HeaderExclude />
 
       {/* Section Title */}
       <div className="relative w-full mb-8 mt-4">
-        <div className="absolute top-6 left-0 w-[280px] h-24 bg-[#EBE6DE] border-4 border-white shadow-[0_0_10px_rgba(0,0,0,0.25),_0_10px_30px_rgba(0,0,0,0.25)] rounded-r-[30px] flex items-center pl-6">
+        <div className="absolute top-6 left-0 w-[280px] h-24 bg-[#EBE6DE] border-4 border-white shadow-lg rounded-r-[30px] flex items-center pl-6">
           <h2 className="text-white text-[32px] sm:text-[40px] md:text-[48px] font-['Iceland'] leading-none drop-shadow-md">
             Review page
           </h2>
@@ -170,17 +189,17 @@ export default function ReviewPage() {
           <div className="bg-white/80 border border-[#69806C] rounded-xl shadow-xl p-6 w-full max-w-xl flex flex-col items-center gap-6">
             {/* Login/Order Required Warning */}
             {!isAuthenticated() && (
-              <div className="w-full p-4 bg-yellow-50 border-2 border-yellow-400 rounded-lg">
-                <p className="text-yellow-800 font-['Iceland'] text-center">
+              <div className="w-full p-4 bg-yellow-50 border border-yellow-400 rounded-lg">
+                <p className="text-yellow-800 font-['Iceland'] text-center text-sm">
                   ⚠️ Please <Link href="/login" className="text-blue-600 underline">login</Link> and complete an order to leave a review
                 </p>
               </div>
             )}
 
             {isAuthenticated() && !canReview && (
-              <div className="w-full p-4 bg-orange-50 border-2 border-orange-400 rounded-lg">
-                <p className="text-orange-800 font-['Iceland'] text-center mb-2">
-                  📦 You need to complete an order first!
+              <div className="w-full p-4 bg-orange-50 border border-orange-400 rounded-lg">
+                <p className="text-orange-800 font-['Iceland'] text-center mb-2 text-sm">
+                   You need to complete an order first!
                 </p>
                 <Link href="/home">
                   <button className="w-full mt-2 px-4 py-2 bg-[#69806C] text-white rounded font-['Iceland'] hover:bg-[#5a6e5e]">
@@ -192,7 +211,7 @@ export default function ReviewPage() {
 
             {/* Error Message */}
             {error && (
-              <div className="w-full p-3 bg-red-100 border border-red-400 text-red-700 rounded font-['Iceland']">
+              <div className="w-full p-3 bg-red-100 border border-red-400 text-red-700 rounded font-['Iceland'] text-sm">
                 {error}
               </div>
             )}
@@ -200,7 +219,7 @@ export default function ReviewPage() {
             {/* Order Selector */}
             {canReview && completedOrders.length > 0 && (
               <div className="w-full">
-                <label className="block text-gray-700 font-['Iceland'] mb-2">
+                <label className="block text-gray-700 font-['Iceland'] mb-2 text-sm">
                   Select Order to Review
                 </label>
                 <select
@@ -216,7 +235,7 @@ export default function ReviewPage() {
                   <option value="">Choose an order...</option>
                   {completedOrders.map((order) => (
                     <option key={order._id} value={order._id}>
-                      {order.orderId} - {order.shavedIce.flavor} ({new Date(order.createdAt).toLocaleDateString('th-TH')})
+                      {order.orderId} - {order.shavedIce.flavor} ({new Date(order.createdAt).toLocaleDateString()})
                     </option>
                   ))}
                 </select>
@@ -236,7 +255,7 @@ export default function ReviewPage() {
 
             {/* Rating Selector */}
             <div>
-              <p className="text-center text-gray-700 font-['Iceland'] mb-2">
+              <p className="text-center text-gray-700 font-['Iceland'] mb-2 text-sm">
                 Rate your experience
               </p>
               <div className="flex gap-2">
@@ -265,7 +284,7 @@ export default function ReviewPage() {
 
             {/* Textarea */}
             <div className="w-full">
-              <label className="block text-gray-700 font-['Iceland'] mb-2">
+              <label className="block text-gray-700 font-['Iceland'] mb-2 text-sm">
                 Your Review (10-500 characters)
               </label>
               <textarea
@@ -289,7 +308,7 @@ export default function ReviewPage() {
             <button
               onClick={handleSubmit}
               disabled={loading || !canReview || rating === 0 || review.trim().length < 10 || !selectedOrder}
-              className="w-48 h-14 bg-[#69806C] text-white text-2xl font-['Iceland'] rounded-lg shadow-md hover:bg-[#506256] transition disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-48 h-14 bg-[#69806C] text-white text-xl font-['Iceland'] rounded-lg shadow-md hover:bg-[#506256] transition disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading ? 'Submitting...' : 'Submit Review'}
             </button>
@@ -341,12 +360,11 @@ export default function ReviewPage() {
                     </div>
                     {r.createdAt && (
                       <span className="text-sm text-gray-500 font-['Iceland']">
-                        {new Date(r.createdAt).toLocaleDateString('th-TH')}
+                        {new Date(r.createdAt).toLocaleDateString()}
                       </span>
                     )}
                   </div>
                   
-                  {/* ✅ แสดงว่าสั่งอะไรไป */}
                   {(r.shavedIceFlavor || r.toppings) && (
                     <div className="mb-2 p-2 bg-blue-50 rounded text-xs font-['Iceland']">
                       <span className="text-blue-800">

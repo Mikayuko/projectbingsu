@@ -1,4 +1,4 @@
-// src/pages/admin/orders/index.tsx - Real-time + Notifications (ไม่มีเสียง)
+// src/pages/admin/orders/index.tsx - Complete: Manual Refresh Only
 
 'use client';
 
@@ -30,33 +30,12 @@ export default function AdminOrdersPage() {
     popularFlavor: ''
   });
   
-  // ✅ Real-time state
-  const [autoRefresh, setAutoRefresh] = useState(true);
   const [lastRefresh, setLastRefresh] = useState(new Date());
-  const [newOrdersCount, setNewOrdersCount] = useState(0);
 
   useEffect(() => {
     fetchOrders();
     fetchStats();
-    requestNotificationPermission();
   }, [filter]);
-
-  // ✅ Auto-refresh every 10 seconds
-  useEffect(() => {
-    if (!autoRefresh) return;
-
-    const interval = setInterval(() => {
-      fetchOrdersSilent();
-    }, 10000);
-
-    return () => clearInterval(interval);
-  }, [autoRefresh, filter, orders]);
-
-  const requestNotificationPermission = async () => {
-    if ('Notification' in window && Notification.permission === 'default') {
-      await Notification.requestPermission();
-    }
-  };
 
   const fetchOrders = async () => {
     setLoading(true);
@@ -69,38 +48,6 @@ export default function AdminOrdersPage() {
       console.error('Failed to fetch orders:', error);
     } finally {
       setLoading(false);
-    }
-  };
-
-  // ✅ Silent refresh (ไม่แสดง loading)
-  const fetchOrdersSilent = async () => {
-    try {
-      const filters = filter !== 'all' ? { status: filter } : {};
-      const result = await api.getAllOrders(filters);
-      const newOrders = result.orders || [];
-      
-      // ตรวจสอบว่ามี order ใหม่หรือไม่
-      const oldIds = new Set(orders.map(o => o._id));
-      const addedOrders = newOrders.filter((o: Order) => !oldIds.has(o._id));
-      
-      if (addedOrders.length > 0) {
-        setNewOrdersCount(prev => prev + addedOrders.length);
-        
-        // ✅ แจ้งเตือน (ไม่มีเสียง)
-        if ('Notification' in window && Notification.permission === 'granted') {
-          new Notification('🍧 New Bingsu Order!', {
-            body: `${addedOrders.length} new order(s) received`,
-            icon: '/favicon.ico',
-            silent: true
-          });
-        }
-      }
-      
-      setOrders(newOrders);
-      setLastRefresh(new Date());
-      await fetchStats();
-    } catch (error) {
-      console.error('Silent refresh failed:', error);
     }
   };
 
@@ -118,6 +65,11 @@ export default function AdminOrdersPage() {
     }
   };
 
+  const handleRefreshNow = () => {
+    fetchOrders();
+    fetchStats();
+  };
+
   const updateOrderStatus = async (orderId: string, newStatus: string) => {
     try {
       await api.updateOrderStatus(orderId, newStatus);
@@ -127,11 +79,6 @@ export default function AdminOrdersPage() {
     } catch (error: any) {
       alert(error.message || 'Failed to update status');
     }
-  };
-
-  const handleRefreshNow = () => {
-    setNewOrdersCount(0);
-    fetchOrders();
   };
 
   const getStatusColor = (status: string) => {
@@ -162,29 +109,14 @@ export default function AdminOrdersPage() {
         </Link>
         <h1 className="ml-6 text-white text-3xl">Order Management</h1>
         
-        {/* ✅ Refresh Controls */}
+        {/* Manual Refresh Controls */}
         <div className="ml-auto flex items-center gap-4">
-          <label className="flex items-center gap-2 text-white cursor-pointer">
-            <input
-              type="checkbox"
-              checked={autoRefresh}
-              onChange={(e) => setAutoRefresh(e.target.checked)}
-              className="w-4 h-4"
-            />
-            <span className="text-sm">Auto-refresh (10s)</span>
-          </label>
-          
           <button
             onClick={handleRefreshNow}
             className="px-4 py-2 bg-white/20 hover:bg-white/30 rounded-lg text-white flex items-center gap-2 transition"
           >
-            <span>🔄</span>
+           
             <span>Refresh Now</span>
-            {newOrdersCount > 0 && (
-              <span className="px-2 py-1 bg-red-500 text-white text-xs rounded-full animate-pulse">
-                +{newOrdersCount}
-              </span>
-            )}
           </button>
           
           <p className="text-white/70 text-sm">
@@ -216,7 +148,7 @@ export default function AdminOrdersPage() {
       </div>
 
       <div className="p-6 max-w-7xl mx-auto">
-        <div className="flex gap-2 mb-6">
+        <div className="flex gap-2 mb-6 flex-wrap">
           {['all', 'Pending', 'Preparing', 'Ready', 'Completed'].map((status) => (
             <button
               key={status}
