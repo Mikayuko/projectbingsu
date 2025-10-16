@@ -366,9 +366,9 @@ export default function ReviewPage() {
                   </div>
                   
                   {(r.shavedIceFlavor || r.toppings) && (
-                    <div className="mb-2 p-2 bg-blue-50 rounded text-xs font-['Iceland']">
-                      <span className="text-blue-800">
-                        🍧 Ordered: <strong>{r.shavedIceFlavor}</strong>
+                    <div className="mb-2 p-2 bg-yellow-50 rounded text-xs font-['Iceland']">
+                      <span className="text-yellow-800">
+                         Ordered: <strong>{r.shavedIceFlavor}</strong>
                         {r.toppings && r.toppings.length > 0 && ` + ${r.toppings.join(', ')}`}
                       </span>
                     </div>

@@ -1,11 +1,11 @@
-// src/pages/home.tsx - Improved: Better image display for popular items
+// src/pages/home.tsx - Fixed: Dynamic Admin/Login Button
 
 import { useState, useEffect } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import HeaderExclude from '../components/HeaderExclude';
-import { api } from '@/utils/api';
+import { api, isAuthenticated, isAdmin, getCurrentUser } from '@/utils/api';
 
 interface PopularItem {
   flavor: string;
@@ -38,10 +38,26 @@ export default function HomePage() {
   const [activeCodes, setActiveCodes] = useState(0);
   const [averageRating, setAverageRating] = useState(0);
   const [totalReviews, setTotalReviews] = useState(0);
+  
+  // ✅ Auth State
+  const [mounted, setMounted] = useState(false);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [isUserAdmin, setIsUserAdmin] = useState(false);
 
   useEffect(() => {
+    setMounted(true);
+    checkAuthStatus();
     fetchAllData();
+    
+    // Check auth periodically
+    const interval = setInterval(checkAuthStatus, 2000);
+    return () => clearInterval(interval);
   }, []);
+
+  const checkAuthStatus = () => {
+    setIsLoggedIn(isAuthenticated());
+    setIsUserAdmin(isAdmin());
+  };
 
   const fetchAllData = async () => {
     await Promise.all([
@@ -144,24 +160,109 @@ export default function HomePage() {
     }
   };
 
+  // ✅ Handle Admin button click
+  const handleAdminClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    
+    if (!isLoggedIn) {
+      router.push('/login');
+      return;
+    }
+    
+    if (!isUserAdmin) {
+      alert('คุณไม่มีสิทธิ์เข้าถึงหน้า Admin\nเฉพาะผู้ดูแลระบบเท่านั้น');
+      return;
+    }
+    
+    router.push('/admin');
+  };
+
+  // ✅ Prevent hydration error
+  if (!mounted) {
+    return null;
+  }
+
   return (
     <div className="relative w-full min-h-screen bg-[#EBE6DE]">
-      {/* Header with Navigation */}
+      {/* Header with Dynamic Navigation */}
       <div className="px-4 md:px-10 lg:px-20 py-10">
-        <HeaderExclude />
+        <div className="relative w-full max-w-7xl mx-auto h-[400px] rounded-[20px] overflow-hidden">
+          <svg
+            className="absolute inset-0 w-full h-full"
+            viewBox="0 0 2000 600"
+            xmlns="http://www.w3.org/2000/svg"
+          >
+            <defs>
+              <mask id="mask-xor">
+                <rect width="3000" height="600" rx="20" fill="white" />
+                <rect x="0" y="400" width="900" height="200" rx="10" fill="black" />
+              </mask>
+            </defs>
+            <rect width="3000" height="600" rx="20" fill="#D9D9D9" mask="url(#mask-xor)" />
+            <image
+              xlinkHref="/images/ชาเขียว.jpg"
+              x="0"
+              y="0"
+              width="100%"
+              height="100%"
+              preserveAspectRatio="xMidYMid slice"
+              mask="url(#mask-xor)"
+            />
+          </svg>
+
+          {/* ✅ Dynamic Navigation Buttons */}
+          <div className="absolute top-[280px] left-0 right-0 flex flex-wrap gap-4">
+            {/* Profile/Login Button */}
+            <Link href={isLoggedIn ? "/profile" : "/login"}>
+              <div className="cursor-pointer flex flex-col justify-center items-center w-[100px] h-[100px] bg-[#69806C] rounded-[5px] shadow-[0_0_10px_rgba(0,0,0,0.25),0_10px_30px_rgba(0,0,0,0.25)] text-white font-['Iceland'] text-[24px] transition hover:scale-105">
+                {isLoggedIn ? "Profile" : "Login"}
+              </div>
+            </Link>
+
+            {/* Menu Button */}
+            <Link href="/cart">
+              <div className="cursor-pointer flex flex-col justify-center items-center w-[100px] h-[100px] bg-[#69806C] rounded-[5px] shadow-[0_0_10px_rgba(0,0,0,0.25),0_10px_30px_rgba(0,0,0,0.25)] text-white font-['Iceland'] text-[24px] transition hover:scale-105">
+                Menu
+              </div>
+            </Link>
+
+            {/* Review Button */}
+            <Link href="/review">
+              <div className="cursor-pointer flex flex-col justify-center items-center w-[100px] h-[100px] bg-[#69806C] rounded-[5px] shadow-[0_0_10px_rgba(0,0,0,0.25),0_10px_30px_rgba(0,0,0,0.25)] text-white font-['Iceland'] text-[24px] transition hover:scale-105">
+                Review
+              </div>
+            </Link>
+
+            {/* Order Button */}
+            <Link href="/order">
+              <div className="cursor-pointer flex flex-col justify-center items-center w-[100px] h-[100px] bg-[#69806C] rounded-[5px] shadow-[0_0_10px_rgba(0,0,0,0.25),0_10px_30px_rgba(0,0,0,0.25)] text-white font-['Iceland'] text-[24px] transition hover:scale-105">
+                Order
+              </div>
+            </Link>
+
+            {/* ✅ Admin Button - Show only for logged-in Admin */}
+            {isLoggedIn && isUserAdmin && (
+              <div
+                onClick={handleAdminClick}
+                className="cursor-pointer flex flex-col justify-center items-center w-[100px] h-[100px] bg-[#69806C] rounded-[5px] shadow-[0_0_10px_rgba(0,0,0,0.25),0_10px_30px_rgba(0,0,0,0.25)] text-white font-['Iceland'] text-[24px] transition hover:scale-105"
+              >
+                Admin
+              </div>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Hero Section with Live Stats */}
       <div className="w-full bg-gradient-to-r from-[#69806C] to-[#947E5A] py-16 px-4 mb-12">
         <div className="max-w-6xl mx-auto text-center">
           <h1 className="text-5xl md:text-7xl text-white font-['Iceland'] mb-4 drop-shadow-lg">
-            Welcome to Bingsu Paradise! 🍧
+            Welcome to Bingsu Paradise! 
           </h1>
           <p className="text-xl md:text-2xl text-white/90 font-['Iceland'] mb-6">
             Cool down with our signature Korean shaved ice
           </p>
           
-          {/* Live Stats Bar */}
           <div className="flex flex-wrap justify-center gap-4 mb-6">
             <div className="bg-white/20 backdrop-blur-sm px-4 py-2 rounded-lg">
               <span className="text-white font-['Iceland'] text-sm">📊 Today's Orders</span>
@@ -181,7 +282,6 @@ export default function HomePage() {
             </div>
           </div>
           
-          {/* Special Offer Badge */}
           <div className="inline-block bg-yellow-400 text-[#543429] px-6 py-3 rounded-full font-['Iceland'] text-xl font-bold shadow-lg animate-pulse">
             🎉 Buy 9, Get 1 FREE! 🎉
           </div>
@@ -189,7 +289,7 @@ export default function HomePage() {
       </div>
 
       {/* Stock Alert */}
-      {stockStatus.outOfStock > 0 && (
+      {/* {stockStatus.outOfStock > 0 && (
         <div className="max-w-6xl mx-auto px-4 mb-8">
           <div className="bg-red-50 border-2 border-red-200 rounded-lg p-4 text-center">
             <p className="text-red-800 font-['Iceland'] text-lg">
@@ -198,7 +298,7 @@ export default function HomePage() {
             </p>
           </div>
         </div>
-      )}
+      )} */}
 
       {/* Popular Items Section */}
       {popularItems.length > 0 && (
@@ -250,7 +350,6 @@ export default function HomePage() {
             </div>
           )}
 
-          {/* Enter Menu Code Field */}
           <div className="max-w-xl mx-auto flex flex-col gap-4">
             <div className="bg-[#EBE6DE] border-2 border-white shadow-2xl rounded-xl flex justify-center items-center px-6 py-4">
               <input
@@ -268,7 +367,6 @@ export default function HomePage() {
               />
             </div>
 
-            {/* Confirm Button */}
             <button
               onClick={handleConfirm}
               disabled={loading || menuCode.length !== 5}
@@ -277,7 +375,6 @@ export default function HomePage() {
               {loading ? 'Validating...' : 'Confirm & Order Now'}
             </button>
 
-            {/* Active Codes Info */}
             <div className="bg-white/20 backdrop-blur-sm rounded-lg p-4 text-center">
               <p className="text-white/90 font-['Iceland'] text-sm">
                 💡 Get your menu code from our staff
@@ -384,7 +481,6 @@ export default function HomePage() {
           <p className="font-['Iceland'] text-lg mb-2">
             © 2025 Bingsu Order Management System
           </p>
-          
         </div>
       </div>
     </div>

@@ -280,24 +280,24 @@ export default function SalesReportPage() {
         }
         
         .custom-scrollbar::-webkit-scrollbar-track {
-          background: rgba(255, 255, 255, 0.1);
+          background: rgba(105, 128, 108, 0.1);
           border-radius: 10px;
         }
         
         .custom-scrollbar::-webkit-scrollbar-thumb {
-          background: rgba(255, 255, 255, 0.5);
+          background: rgba(105, 128, 108, 0.5);
           border-radius: 10px;
           transition: background 0.3s ease;
         }
         
         .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-          background: rgba(255, 255, 255, 0.7);
+          background: rgba(105, 128, 108, 0.7);
         }
 
         /* For Firefox */
         .custom-scrollbar {
           scrollbar-width: thin;
-          scrollbar-color: rgba(255, 255, 255, 0.5) rgba(255, 255, 255, 0.1);
+          scrollbar-color: rgba(105, 128, 108, 0.5) rgba(105, 128, 108, 0.1);
         }
       `}</style>
 
@@ -432,7 +432,7 @@ export default function SalesReportPage() {
               {salesData.length === 0 ? (
                 <p className="text-gray-500 text-center py-8">No sales data</p>
               ) : (
-                <div className="overflow-x-auto">
+                <div className="max-h-96 overflow-y-auto custom-scrollbar">
                   <table className="w-full">
                     <thead>
                       <tr className="border-b-2 border-[#69806C]">

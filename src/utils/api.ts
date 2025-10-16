@@ -1,4 +1,4 @@
-// src/utils/api.ts - Updated with Stock Management Functions
+// src/utils/api.ts - Complete API Utils
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
 
@@ -13,36 +13,6 @@ export interface User {
     stamps: number;
     totalFreeDrinks: number;
   };
-}
-
-export interface Order {
-  _id: string;
-  orderId: string;
-  customerCode: string;
-  cupSize: 'S' | 'M' | 'L';
-  shavedIce: {
-    flavor: string;
-    points: number;
-  };
-  toppings: Array<{
-    name: string;
-    points: number;
-  }>;
-  pricing: {
-    basePrice: number;
-    total: number;
-  };
-  status: string;
-  createdAt: string;
-}
-
-export interface Review {
-  _id: string;
-  customerName: string;
-  rating: number;
-  comment: string;
-  createdAt: string;
-  helpfulVotes: number;
 }
 
 // Helper function to get auth headers
@@ -352,7 +322,7 @@ class BingsuAPI {
     return response.json();
   }
 
-  // ✅ Stock Management endpoints
+  // Stock Management endpoints
   async getStock() {
     const response = await fetch(`${API_BASE_URL}/stock`, {
       headers: getAuthHeaders()
@@ -462,6 +432,75 @@ class BingsuAPI {
 
   async initializeStock() {
     const response = await fetch(`${API_BASE_URL}/stock/initialize`, {
+      method: 'POST',
+      headers: getAuthHeaders()
+    });
+    
+    await handleApiError(response);
+    return response.json();
+  }
+
+  // ✅ Menu Management endpoints
+  async getMenu(filters?: { itemType?: string; isActive?: boolean }) {
+    const params = new URLSearchParams(filters as any);
+    const response = await fetch(`${API_BASE_URL}/menu?${params}`);
+    
+    await handleApiError(response);
+    return response.json();
+  }
+
+  async saveMenuItem(data: {
+    itemType: 'flavor' | 'topping' | 'size';
+    name: string;
+    price: number;
+    isActive?: boolean;
+    description?: string;
+    image?: string;
+  }) {
+    const response = await fetch(`${API_BASE_URL}/menu`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...getAuthHeaders()
+      },
+      body: JSON.stringify(data)
+    });
+    
+    await handleApiError(response);
+    return response.json();
+  }
+
+  async updateMenuItem(itemId: string, updates: {
+    price?: number;
+    isActive?: boolean;
+    description?: string;
+    image?: string;
+  }) {
+    const response = await fetch(`${API_BASE_URL}/menu/${itemId}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        ...getAuthHeaders()
+      },
+      body: JSON.stringify(updates)
+    });
+    
+    await handleApiError(response);
+    return response.json();
+  }
+
+  async deleteMenuItem(itemId: string) {
+    const response = await fetch(`${API_BASE_URL}/menu/${itemId}`, {
+      method: 'DELETE',
+      headers: getAuthHeaders()
+    });
+    
+    await handleApiError(response);
+    return response.json();
+  }
+
+  async initializeMenu() {
+    const response = await fetch(`${API_BASE_URL}/menu/initialize`, {
       method: 'POST',
       headers: getAuthHeaders()
     });

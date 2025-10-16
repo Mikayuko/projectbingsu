@@ -1,16 +1,26 @@
-// src/pages/admin/data-management/index.tsx - Fixed Version
+// src/pages/admin/data-management/index.tsx - Complete with All Tabs Working
 
 'use client';
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { api, isAdmin, getCurrentUser } from '@/utils/api';
+import { api, isAdmin } from '@/utils/api';
 import { useRouter } from 'next/router';
 
+interface MenuItem {
+  _id: string;
+  itemType: 'flavor' | 'topping' | 'size';
+  name: string;
+  price: number;
+  isActive: boolean;
+  description?: string;
+  image?: string;
+}
+
 interface MenuData {
-  flavors: Array<{ name: string; price: number; active: boolean }>;
-  toppings: Array<{ name: string; price: number; active: boolean }>;
-  sizes: Array<{ size: string; price: number }>;
+  flavors: MenuItem[];
+  toppings: MenuItem[];
+  sizes: MenuItem[];
 }
 
 interface StockItem {
@@ -52,25 +62,15 @@ export default function DataManagementPage() {
   const [showStockModal, setShowStockModal] = useState(false);
   const [stockLoading, setStockLoading] = useState(false);
   
+  // Menu Management State
   const [menuData, setMenuData] = useState<MenuData>({
-    flavors: [
-      { name: 'Strawberry', price: 60, active: true },
-      { name: 'Thai Tea', price: 60, active: true },
-      { name: 'Matcha', price: 60, active: true },
-    ],
-    toppings: [
-      { name: 'Apple', price: 10, active: true },
-      { name: 'Cherry', price: 10, active: true },
-      { name: 'Blueberry', price: 10, active: true },
-      { name: 'Raspberry', price: 10, active: true },
-      { name: 'Strawberry', price: 10, active: true },
-    ],
-    sizes: [
-      { size: 'S', price: 0 },
-      { size: 'M', price: 10 },
-      { size: 'L', price: 20 },
-    ]
+    flavors: [],
+    toppings: [],
+    sizes: []
   });
+  const [menuLoading, setMenuLoading] = useState(false);
+  const [menuSaving, setMenuSaving] = useState(false);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   
   const [stats, setStats] = useState<Stats>({
     totalUsers: 0,
@@ -98,7 +98,9 @@ export default function DataManagementPage() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      if (activeTab === 'stats') {
+      if (activeTab === 'menu') {
+        await loadMenuData();
+      } else if (activeTab === 'stats') {
         const [orderStats, reviewStats, usersData] = await Promise.all([
           api.getOrderStats(),
           api.getReviews(1, 1),
@@ -126,7 +128,114 @@ export default function DataManagementPage() {
     }
   };
 
-  // Stock Management Functions
+  // ===== MENU MANAGEMENT FUNCTIONS =====
+  
+  const loadMenuData = async () => {
+    setMenuLoading(true);
+    try {
+      const result = await api.getMenu({ isActive: true });
+      setMenuData({
+        flavors: result.flavors || [],
+        toppings: result.toppings || [],
+        sizes: result.sizes || []
+      });
+      setHasUnsavedChanges(false);
+    } catch (error) {
+      console.error('Failed to load menu:', error);
+    } finally {
+      setMenuLoading(false);
+    }
+  };
+
+  const handleInitializeMenu = async () => {
+    if (!confirm('This will create default menu items. Continue?')) return;
+    
+    setMenuLoading(true);
+    try {
+      const result = await api.initializeMenu();
+      alert(`✅ ${result.message}`);
+      await loadMenuData();
+    } catch (error) {
+      console.error('Failed to initialize menu:', error);
+      alert('Failed to initialize menu');
+    } finally {
+      setMenuLoading(false);
+    }
+  };
+
+  const updateMenuPrice = (type: 'flavors' | 'toppings' | 'sizes', index: number, newPrice: number) => {
+    const updated = { ...menuData };
+    updated[type][index].price = newPrice;
+    setMenuData(updated);
+    setHasUnsavedChanges(true);
+  };
+
+  const toggleItemActive = (type: 'flavors' | 'toppings' | 'sizes', index: number) => {
+    const updated = { ...menuData };
+    updated[type][index].isActive = !updated[type][index].isActive;
+    setMenuData(updated);
+    setHasUnsavedChanges(true);
+  };
+
+  const handleSaveAllMenuChanges = async () => {
+    if (!hasUnsavedChanges) {
+      alert('No changes to save');
+      return;
+    }
+
+    if (!confirm('Save all menu changes to database?')) return;
+    
+    setMenuSaving(true);
+    try {
+      const allItems = [
+        ...menuData.flavors,
+        ...menuData.toppings,
+        ...menuData.sizes
+      ];
+
+      for (const item of allItems) {
+        await api.saveMenuItem({
+          itemType: item.itemType,
+          name: item.name,
+          price: item.price,
+          isActive: item.isActive,
+          description: item.description,
+          image: item.image
+        });
+      }
+
+      alert('✅ Menu saved successfully!');
+      setHasUnsavedChanges(false);
+      await loadMenuData();
+    } catch (error) {
+      console.error('Failed to save menu:', error);
+      alert('Failed to save menu. Please try again.');
+    } finally {
+      setMenuSaving(false);
+    }
+  };
+
+  const exportMenuCSV = () => {
+    let csv = 'Category,Name,Price,Status\n';
+    
+    menuData.flavors.forEach(flavor => {
+      csv += `Flavor,${flavor.name},${flavor.price},${flavor.isActive ? 'Active' : 'Inactive'}\n`;
+    });
+    
+    menuData.toppings.forEach(topping => {
+      csv += `Topping,${topping.name},${topping.price},${topping.isActive ? 'Active' : 'Inactive'}\n`;
+    });
+    
+    csv += '\nSize,Additional Price\n';
+    menuData.sizes.forEach(size => {
+      csv += `${size.name},${size.price}\n`;
+    });
+    
+    downloadCSV(csv, 'menu_data');
+  };
+
+  // ===== STOCK MANAGEMENT FUNCTIONS =====
+  
   const loadStockData = async () => {
     setStockLoading(true);
     try {
@@ -181,20 +290,6 @@ export default function DataManagementPage() {
     }
   };
 
-  const handleAdjustStock = async (stockId: string, adjustment: number) => {
-    setStockLoading(true);
-    try {
-      await api.adjustStock(stockId, adjustment);
-      await loadStockData();
-      alert(`Stock adjusted by ${adjustment > 0 ? '+' : ''}${adjustment}`);
-    } catch (error) {
-      console.error('Failed to adjust stock:', error);
-      alert('Failed to adjust stock');
-    } finally {
-      setStockLoading(false);
-    }
-  };
-
   const handleRestockItem = async (stockId: string, itemName: string, currentQty: number) => {
     if (!confirm(`Restock ${itemName}?\nCurrent: ${currentQty}`)) return;
     
@@ -210,6 +305,9 @@ export default function DataManagementPage() {
       setStockLoading(false);
     }
   };
+
+  // ===== USER MANAGEMENT FUNCTIONS =====
+  
   const loadAllUsers = async () => {
     try {
       const filters: any = {};
@@ -227,18 +325,6 @@ export default function DataManagementPage() {
 
   const handleSearch = () => {
     loadAllUsers();
-  };
-
-  const updateMenuPrice = (type: 'flavors' | 'toppings', index: number, newPrice: number) => {
-    const updated = { ...menuData };
-    updated[type][index].price = newPrice;
-    setMenuData(updated);
-  };
-
-  const toggleItemActive = (type: 'flavors' | 'toppings', index: number) => {
-    const updated = { ...menuData };
-    updated[type][index].active = !updated[type][index].active;
-    setMenuData(updated);
   };
 
   const handleEditUser = (user: any) => {
@@ -301,25 +387,6 @@ export default function DataManagementPage() {
     } finally {
       setLoading(false);
     }
-  };
-
-  const exportMenuCSV = () => {
-    let csv = 'Category,Name,Price,Status\n';
-    
-    menuData.flavors.forEach(flavor => {
-      csv += `Flavor,${flavor.name},${flavor.price},${flavor.active ? 'Active' : 'Inactive'}\n`;
-    });
-    
-    menuData.toppings.forEach(topping => {
-      csv += `Topping,${topping.name},${topping.price},${topping.active ? 'Active' : 'Inactive'}\n`;
-    });
-    
-    csv += '\nSize,Additional Price\n';
-    menuData.sizes.forEach(size => {
-      csv += `${size.size},${size.price}\n`;
-    });
-    
-    downloadCSV(csv, 'menu_data');
   };
 
   const exportReviewStatsCSV = () => {
@@ -411,7 +478,7 @@ export default function DataManagementPage() {
                 : 'text-[#69806C] hover:bg-gray-100'
             }`}
           >
-            📦 Stock Management
+             Stock Management
           </button>
           <button
             onClick={() => setActiveTab('stats')}
@@ -428,131 +495,191 @@ export default function DataManagementPage() {
         {/* Menu Management Tab */}
         {activeTab === 'menu' && (
           <div className="space-y-8">
-            <div className="bg-white rounded-xl shadow-lg p-6">
-              <div className="flex justify-between items-center mb-4">
-                <h3 className="text-2xl text-[#69806C] font-['Iceland']">Shaved Ice Flavors</h3>
+            {hasUnsavedChanges && (
+              <div className="bg-yellow-50 border-2 border-yellow-400 rounded-lg p-4">
+                <p className="text-yellow-800 font-['Iceland'] text-center font-bold">
+                   You have unsaved changes! Click "Save All Changes" to update the database.
+                </p>
+              </div>
+            )}
+
+            <div className="flex justify-between items-center">
+              <div className="flex gap-3">
+                {menuData.flavors.length === 0 && (
+                  <button
+                    onClick={handleInitializeMenu}
+                    disabled={menuLoading}
+                    className="px-4 py-2 bg-blue-500 text-white rounded font-['Iceland'] hover:bg-blue-600 transition disabled:opacity-50"
+                  >
+                    🔧 Initialize Menu
+                  </button>
+                )}
                 <button
                   onClick={exportMenuCSV}
-                  className="px-4 py-2 bg-[#69806C] text-white rounded font-['Iceland'] hover:bg-[#5a6e5e] transition"
+                  disabled={menuData.flavors.length === 0}
+                  className="px-4 py-2 bg-[#69806C] text-white rounded font-['Iceland'] hover:bg-[#5a6e5e] transition disabled:opacity-50"
                 >
                   📊 Export Menu as CSV
                 </button>
               </div>
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b">
-                      <th className="text-left py-2 font-['Iceland'] text-gray-700">Flavor</th>
-                      <th className="text-left py-2 font-['Iceland'] text-gray-700">Base Price</th>
-                      <th className="text-left py-2 font-['Iceland'] text-gray-700">Status</th>
-                      <th className="text-left py-2 font-['Iceland'] text-gray-700">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {menuData.flavors.map((flavor, index) => (
-                      <tr key={`${flavor.name}-${index}`} className="border-b">
-                        <td className="py-3 font-['Iceland']">{flavor.name}</td>
-                        <td className="py-3">
-                          <input
-                            type="number"
-                            value={flavor.price}
-                            onChange={(e) => updateMenuPrice('flavors', index, Number(e.target.value))}
-                            className="w-20 p-1 border rounded font-['Iceland']"
-                          />
-                          <span className="ml-2 font-['Iceland']">฿</span>
-                        </td>
-                        <td className="py-3">
-                          <span className={`px-2 py-1 rounded text-sm font-['Iceland'] ${
-                            flavor.active 
-                              ? 'bg-green-100 text-green-700' 
-                              : 'bg-red-100 text-red-700'
-                          }`}>
-                            {flavor.active ? 'Active' : 'Inactive'}
-                          </span>
-                        </td>
-                        <td className="py-3">
-                          <button
-                            onClick={() => toggleItemActive('flavors', index)}
-                            className={`px-3 py-1 rounded text-sm font-['Iceland'] ${
-                              flavor.active
-                                ? 'bg-red-500 text-white hover:bg-red-600'
-                                : 'bg-green-500 text-white hover:bg-green-600'
-                            }`}
-                          >
-                            {flavor.active ? 'Disable' : 'Enable'}
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              
+              <button
+                onClick={handleSaveAllMenuChanges}
+                disabled={!hasUnsavedChanges || menuSaving}
+                className="px-8 py-3 bg-green-600 text-white rounded-lg font-['Iceland'] text-xl hover:bg-green-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {menuSaving ? 'Saving...' : ' Save All Changes'}
+              </button>
             </div>
 
-            <div className="bg-white rounded-xl shadow-lg p-6">
-              <h3 className="text-2xl text-[#69806C] font-['Iceland'] mb-4">Toppings</h3>
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b">
-                      <th className="text-left py-2 font-['Iceland'] text-gray-700">Topping</th>
-                      <th className="text-left py-2 font-['Iceland'] text-gray-700">Price</th>
-                      <th className="text-left py-2 font-['Iceland'] text-gray-700">Status</th>
-                      <th className="text-left py-2 font-['Iceland'] text-gray-700">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {menuData.toppings.map((topping, index) => (
-                      <tr key={`${topping.name}-${index}`} className="border-b">
-                        <td className="py-3 font-['Iceland']">{topping.name}</td>
-                        <td className="py-3">
-                          <input
-                            type="number"
-                            value={topping.price}
-                            onChange={(e) => updateMenuPrice('toppings', index, Number(e.target.value))}
-                            className="w-20 p-1 border rounded font-['Iceland']"
-                          />
-                          <span className="ml-2 font-['Iceland']">฿</span>
-                        </td>
-                        <td className="py-3">
-                          <span className={`px-2 py-1 rounded text-sm font-['Iceland'] ${
-                            topping.active 
-                              ? 'bg-green-100 text-green-700' 
-                              : 'bg-red-100 text-red-700'
-                          }`}>
-                            {topping.active ? 'Active' : 'Inactive'}
-                          </span>
-                        </td>
-                        <td className="py-3">
-                          <button
-                            onClick={() => toggleItemActive('toppings', index)}
-                            className={`px-3 py-1 rounded text-sm font-['Iceland'] ${
-                              topping.active
-                                ? 'bg-red-500 text-white hover:bg-red-600'
-                                : 'bg-green-500 text-white hover:bg-green-600'
-                            }`}
-                          >
-                            {topping.active ? 'Disable' : 'Enable'}
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+            {menuLoading ? (
+              <div className="text-center py-12">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#69806C] mx-auto mb-4"></div>
+                <p className="text-gray-500 font-['Iceland']">Loading menu...</p>
               </div>
-            </div>
-
-            <div className="bg-white rounded-xl shadow-lg p-6">
-              <h3 className="text-2xl text-[#69806C] font-['Iceland'] mb-4">Size Pricing</h3>
-              <div className="grid grid-cols-3 gap-4">
-                {menuData.sizes.map((size) => (
-                  <div key={size.size} className="bg-gray-50 p-4 rounded-lg text-center">
-                    <div className="text-3xl font-['Iceland'] text-[#69806C] mb-2">{size.size}</div>
-                    <div className="text-xl font-['Iceland']">+฿{size.price}</div>
+            ) : menuData.flavors.length === 0 ? (
+              <div className="bg-white rounded-xl shadow-lg p-12 text-center">
+                <div className="text-6xl mb-4">🍧</div>
+                <p className="text-gray-500 font-['Iceland'] text-lg mb-4">No menu items found</p>
+                <button
+                  onClick={handleInitializeMenu}
+                  className="px-6 py-3 bg-[#69806C] text-white font-['Iceland'] rounded-lg hover:bg-[#5a6e5e] transition"
+                >
+                  Initialize Menu Now
+                </button>
+              </div>
+            ) : (
+              <>
+                {/* Flavors Table */}
+                <div className="bg-white rounded-xl shadow-lg p-6">
+                  <h3 className="text-2xl text-[#69806C] font-['Iceland'] mb-4">Shaved Ice Flavors</h3>
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead>
+                        <tr className="border-b">
+                          <th className="text-left py-2 font-['Iceland'] text-gray-700">Flavor</th>
+                          <th className="text-left py-2 font-['Iceland'] text-gray-700">Base Price</th>
+                          <th className="text-left py-2 font-['Iceland'] text-gray-700">Status</th>
+                          <th className="text-left py-2 font-['Iceland'] text-gray-700">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {menuData.flavors.map((flavor, index) => (
+                          <tr key={flavor._id} className="border-b">
+                            <td className="py-3 font-['Iceland']">{flavor.name}</td>
+                            <td className="py-3">
+                              <input
+                                type="number"
+                                value={flavor.price}
+                                onChange={(e) => updateMenuPrice('flavors', index, Number(e.target.value))}
+                                className="w-20 p-1 border rounded font-['Iceland']"
+                              />
+                              <span className="ml-2 font-['Iceland']">฿</span>
+                            </td>
+                            <td className="py-3">
+                              <span className={`px-2 py-1 rounded text-sm font-['Iceland'] ${
+                                flavor.isActive 
+                                  ? 'bg-green-100 text-green-700' 
+                                  : 'bg-red-100 text-red-700'
+                              }`}>
+                                {flavor.isActive ? 'Active' : 'Inactive'}
+                              </span>
+                            </td>
+                            <td className="py-3">
+                              <button
+                                onClick={() => toggleItemActive('flavors', index)}
+                                className={`px-3 py-1 rounded text-sm font-['Iceland'] ${
+                                  flavor.isActive
+                                    ? 'bg-red-500 text-white hover:bg-red-600'
+                                    : 'bg-green-500 text-white hover:bg-green-600'
+                                }`}
+                              >
+                                {flavor.isActive ? 'Disable' : 'Enable'}
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
-                ))}
-              </div>
-            </div>
+                </div>
+
+                {/* Toppings Table */}
+                <div className="bg-white rounded-xl shadow-lg p-6">
+                  <h3 className="text-2xl text-[#69806C] font-['Iceland'] mb-4">Toppings</h3>
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead>
+                        <tr className="border-b">
+                          <th className="text-left py-2 font-['Iceland'] text-gray-700">Topping</th>
+                          <th className="text-left py-2 font-['Iceland'] text-gray-700">Price</th>
+                          <th className="text-left py-2 font-['Iceland'] text-gray-700">Status</th>
+                          <th className="text-left py-2 font-['Iceland'] text-gray-700">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {menuData.toppings.map((topping, index) => (
+                          <tr key={topping._id} className="border-b">
+                            <td className="py-3 font-['Iceland']">{topping.name}</td>
+                            <td className="py-3">
+                              <input
+                                type="number"
+                                value={topping.price}
+                                onChange={(e) => updateMenuPrice('toppings', index, Number(e.target.value))}
+                                className="w-20 p-1 border rounded font-['Iceland']"
+                              />
+                              <span className="ml-2 font-['Iceland']">฿</span>
+                            </td>
+                            <td className="py-3">
+                              <span className={`px-2 py-1 rounded text-sm font-['Iceland'] ${
+                                topping.isActive 
+                                  ? 'bg-green-100 text-green-700' 
+                                  : 'bg-red-100 text-red-700'
+                              }`}>
+                                {topping.isActive ? 'Active' : 'Inactive'}
+                              </span>
+                            </td>
+                            <td className="py-3">
+                              <button
+                                onClick={() => toggleItemActive('toppings', index)}
+                                className={`px-3 py-1 rounded text-sm font-['Iceland'] ${
+                                  topping.isActive
+                                    ? 'bg-red-500 text-white hover:bg-red-600'
+                                    : 'bg-green-500 text-white hover:bg-green-600'
+                                }`}
+                              >
+                                {topping.isActive ? 'Disable' : 'Enable'}
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* Size Pricing */}
+                <div className="bg-white rounded-xl shadow-lg p-6">
+                  <h3 className="text-2xl text-[#69806C] font-['Iceland'] mb-4">Size Pricing</h3>
+                  <div className="grid grid-cols-3 gap-4">
+                    {menuData.sizes.map((size, index) => (
+                      <div key={size._id} className="bg-gray-50 p-4 rounded-lg text-center">
+                        <div className="text-3xl font-['Iceland'] text-[#69806C] mb-2">{size.name}</div>
+                        <div className="flex items-center justify-center gap-2">
+                          <span className="font-['Iceland']">+฿</span>
+                          <input
+                            type="number"
+                            value={size.price}
+                            onChange={(e) => updateMenuPrice('sizes', index, Number(e.target.value))}
+                            className="w-16 p-1 border rounded font-['Iceland'] text-center"
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </>
+            )}
           </div>
         )}
 
@@ -702,15 +829,8 @@ export default function DataManagementPage() {
           <div className="space-y-6">
             <div className="bg-white rounded-xl shadow-lg p-6">
               <div className="flex justify-between items-center mb-6">
-                <h3 className="text-2xl text-[#69806C] font-['Iceland']">📦 Stock Inventory</h3>
+                <h3 className="text-2xl text-[#69806C] font-['Iceland']"> Stock Inventory</h3>
                 <div className="flex gap-3">
-                  {/* <button
-                    onClick={handleInitializeStock}
-                    disabled={stockLoading}
-                    className="px-4 py-2 bg-blue-500 text-white rounded font-['Iceland'] hover:bg-blue-600 transition disabled:opacity-50"
-                  >
-                    🔧 Initialize Stock
-                  </button> */}
                   <button
                     onClick={exportStockCSV}
                     disabled={stockItems.length === 0}
@@ -721,7 +841,6 @@ export default function DataManagementPage() {
                 </div>
               </div>
 
-              {/* Low Stock Alert */}
               {lowStockItems.length > 0 && (
                 <div className="mb-6 p-4 bg-red-50 border-2 border-red-200 rounded-lg">
                   <h4 className="text-red-800 font-['Iceland'] text-lg font-bold mb-2">
@@ -737,7 +856,6 @@ export default function DataManagementPage() {
                 </div>
               )}
 
-              {/* Stock Table */}
               {stockLoading ? (
                 <div className="text-center py-8">
                   <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#69806C] mx-auto mb-4"></div>
@@ -815,30 +933,27 @@ export default function DataManagementPage() {
                             {new Date(item.lastRestocked).toLocaleDateString('th-TH')}
                           </td>
                           <td className="py-3 px-4">
-                          <div className="flex gap-2 justify-center flex-wrap">
-                            {/* ✅ ปุ่ม Restock */}
-                            <button
-                              onClick={() => handleRestockItem(item._id, item.name, item.quantity)}
-                              disabled={stockLoading}
-                              className="px-3 py-2 bg-green-500 text-white rounded text-sm font-['Iceland'] hover:bg-green-600 disabled:opacity-50 flex items-center gap-1"
-                            >
-                          
-                              <span>Restock</span>
-                            </button>
-                            
-                            {/* ปุ่ม Edit */}
-                            <button
-                              onClick={() => {
-                                setEditingStock(item);
-                                setShowStockModal(true);
-                              }}
-                              disabled={stockLoading}
-                              className="px-3 py-2 bg-blue-500 text-white rounded text-sm font-['Iceland'] hover:bg-blue-600 disabled:opacity-50"
-                            >
-                              Edit
-                            </button>
-                          </div>
-                        </td>
+                            <div className="flex gap-2 justify-center flex-wrap">
+                              <button
+                                onClick={() => handleRestockItem(item._id, item.name, item.quantity)}
+                                disabled={stockLoading}
+                                className="px-3 py-2 bg-green-500 text-white rounded text-sm font-['Iceland'] hover:bg-green-600 disabled:opacity-50 flex items-center gap-1"
+                              >
+                                <span>Restock</span>
+                              </button>
+                              
+                              <button
+                                onClick={() => {
+                                  setEditingStock(item);
+                                  setShowStockModal(true);
+                                }}
+                                disabled={stockLoading}
+                                className="px-3 py-2 bg-blue-500 text-white rounded text-sm font-['Iceland'] hover:bg-blue-600 disabled:opacity-50"
+                              >
+                                Edit
+                              </button>
+                            </div>
+                          </td>
                         </tr>
                       ))}
                     </tbody>
