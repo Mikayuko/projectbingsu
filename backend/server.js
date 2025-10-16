@@ -1,3 +1,5 @@
+// backend/server.js - Complete with Menu Routes
+
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
@@ -12,6 +14,7 @@ const menuCodeRoutes = require('./routes/menuCodes');
 const reviewRoutes = require('./routes/reviews');
 const userRoutes = require('./routes/users');
 const stockRoutes = require('./routes/stock');
+const menuRoutes = require('./routes/menu'); // ✅ เพิ่มบรรทัดนี้
 
 const app = express();
 
@@ -64,6 +67,7 @@ app.use('/api/menu-codes', menuCodeRoutes);
 app.use('/api/reviews', reviewRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/stock', stockRoutes);
+app.use('/api/menu', menuRoutes); // ✅ เพิ่มบรรทัดนี้
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
@@ -88,6 +92,7 @@ app.get('/', (req, res) => {
       reviews: '/api/reviews',
       users: '/api/users',
       stock: '/api/stock',
+      menu: '/api/menu', // ✅ เพิ่มบรรทัดนี้
       health: '/api/health'
     }
   });
