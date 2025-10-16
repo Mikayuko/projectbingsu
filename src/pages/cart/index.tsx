@@ -211,13 +211,13 @@ export default function GalleryPage() {
                   >
                     {/* Stock Status Badge */}
                     <div className={`absolute top-2 right-2 z-20 px-2 py-1 rounded-full text-xs font-['Iceland'] font-bold ${
-                      !topping.available 
+                      !topping.available || topping.stock === 0
                         ? 'bg-red-600 text-white' 
                         : topping.stock <= 10 
                         ? 'bg-yellow-500 text-white'
                         : 'bg-green-500 text-white'
                     }`}>
-                      {!topping.available ? 'Out' : topping.stock <= 10 ? `${topping.stock} left` : 'In Stock'}
+                      {topping.stock === 0 || !topping.available ? 'Out' : topping.stock <= 10 ? `${topping.stock} left` : 'In Stock'}
                     </div>
 
                     {/* Price Badge */}
