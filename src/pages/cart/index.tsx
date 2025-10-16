@@ -217,7 +217,7 @@ export default function GalleryPage() {
                         ? 'bg-yellow-500 text-white'
                         : 'bg-green-500 text-white'
                     }`}>
-                      {topping.stock === 0 || !topping.available ? 'Out' : topping.stock <= 10 ? `${topping.stock} left` : 'In Stock'}
+                      {topping.stock === 0 || !topping.available ? 'Out of Stock' : topping.stock <= 10 ? `${topping.stock} left` : 'In Stock'}
                     </div>
 
                     {/* Price Badge */}
