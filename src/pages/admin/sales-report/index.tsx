@@ -1,4 +1,4 @@
-// src/pages/admin/sales-report/index.tsx - Complete with proper ranking and custom scrollbar
+// src/pages/admin/sales-report/index.tsx - Fixed: Correct Completion Rate Calculation
 
 'use client';
 
@@ -58,7 +58,10 @@ export default function SalesReportPage() {
     topToppings: [] as TopItem[],
     peakTimes: [] as PeakTime[],
     topCombinations: [] as TopCombo[],
-    completionRate: 0
+    completionRate: 0,
+    completedCount: 0,
+    cancelledCount: 0,
+    allOrdersCount: 0
   });
 
   useEffect(() => {
@@ -74,6 +77,7 @@ export default function SalesReportPage() {
     try {
       const result = await api.getAllOrders();
       const allOrders = result.orders || [];
+      
       setOrders(allOrders);
       calculateSalesData(allOrders);
     } catch (error: any) {
@@ -87,7 +91,9 @@ export default function SalesReportPage() {
 
   const calculateSalesData = (allOrders: Order[]) => {
     const now = new Date();
-    const filteredOrders = allOrders.filter(order => {
+    
+    // กรองตาม period
+    const filteredAllOrders = allOrders.filter(order => {
       const orderDate = new Date(order.createdAt);
       
       switch (period) {
@@ -104,9 +110,19 @@ export default function SalesReportPage() {
       }
     });
 
-    // Group by date AND time
+    // แยกนับตาม status
+    const completedOrders = filteredAllOrders.filter(order => order.status === 'Completed');
+    const allOrdersInPeriod = filteredAllOrders.length;
+    const completedCount = completedOrders.length;
+
+    // ✅ Completion Rate = (Completed / Total) * 100
+    const completionRate = allOrdersInPeriod > 0 
+      ? (completedCount / allOrdersInPeriod) * 100 
+      : 0;
+
+    // ✅ ใช้เฉพาะ Completed orders สำหรับคำนวณ Sales
     const groupedData: { [key: string]: Order[] } = {};
-    filteredOrders.forEach(order => {
+    completedOrders.forEach(order => {
       const orderDate = new Date(order.createdAt);
       const dateKey = orderDate.toLocaleDateString('th-TH');
       const timeKey = orderDate.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
@@ -116,7 +132,6 @@ export default function SalesReportPage() {
       groupedData[fullKey].push(order);
     });
 
-    // Calculate daily sales with time
     const dailySales: SalesData[] = Object.entries(groupedData).map(([dateTime, orders]) => {
       const [date, time] = dateTime.split(' ');
       return {
@@ -130,12 +145,12 @@ export default function SalesReportPage() {
 
     setSalesData(dailySales);
 
-    const totalOrders = filteredOrders.length;
-    const totalRevenue = filteredOrders.reduce((sum, order) => sum + (order.pricing?.total || 0), 0);
+    const totalOrders = completedCount;
+    const totalRevenue = completedOrders.reduce((sum, order) => sum + (order.pricing?.total || 0), 0);
 
-    // Top Flavors with ranking
+    // Top Flavors (Completed only)
     const flavorCount: { [key: string]: number } = {};
-    filteredOrders.forEach(order => {
+    completedOrders.forEach(order => {
       const flavor = order.shavedIce?.flavor || 'Unknown';
       flavorCount[flavor] = (flavorCount[flavor] || 0) + 1;
     });
@@ -153,9 +168,9 @@ export default function SalesReportPage() {
       topFlavors.push({ ...flavorsSorted[i], rank: currentRank });
     }
 
-    // Top Toppings with proper ranking
+    // Top Toppings (Completed only)
     const toppingCount: { [key: string]: number } = {};
-    filteredOrders.forEach(order => {
+    completedOrders.forEach(order => {
       order.toppings?.forEach(topping => {
         toppingCount[topping.name] = (toppingCount[topping.name] || 0) + 1;
       });
@@ -174,9 +189,9 @@ export default function SalesReportPage() {
       topToppings.push({ ...toppingsSorted[i], rank: toppingRank });
     }
 
-    // Peak Times with ranking
+    // Peak Times (Completed only)
     const hourCount: { [key: string]: number } = {};
-    filteredOrders.forEach(order => {
+    completedOrders.forEach(order => {
       const hour = new Date(order.createdAt).getHours();
       const timeRange = `${hour.toString().padStart(2, '0')}:00-${(hour + 1).toString().padStart(2, '0')}:00`;
       hourCount[timeRange] = (hourCount[timeRange] || 0) + 1;
@@ -195,9 +210,9 @@ export default function SalesReportPage() {
       peakTimes.push({ ...peakTimesSorted[i], rank: peakRank });
     }
 
-    // Top Combinations with ranking
+    // Top Combinations (Completed only)
     const comboCount: { [key: string]: number } = {};
-    filteredOrders.forEach(order => {
+    completedOrders.forEach(order => {
       const toppings = order.toppings?.map(t => t.name).sort().join(', ') || 'No toppings';
       const combo = `${order.shavedIce?.flavor} + ${toppings}`;
       comboCount[combo] = (comboCount[combo] || 0) + 1;
@@ -217,10 +232,6 @@ export default function SalesReportPage() {
       topCombinations.push({ ...combosSorted[i], rank: comboRank });
     }
 
-    // Completion rate
-    const completedOrders = filteredOrders.filter(order => order.status === 'Completed').length;
-    const completionRate = totalOrders > 0 ? (completedOrders / totalOrders) * 100 : 0;
-
     setSummary({
       totalOrders,
       totalRevenue,
@@ -229,7 +240,10 @@ export default function SalesReportPage() {
       topToppings,
       peakTimes,
       topCombinations,
-      completionRate
+      completionRate,
+      completedCount,
+      cancelledCount: 0,
+      allOrdersCount: allOrdersInPeriod
     });
   };
 
@@ -241,22 +255,22 @@ export default function SalesReportPage() {
     
     csv += '\n\nSummary\n';
     csv += `Period,${period}\n`;
-    csv += `Total Orders,${summary.totalOrders}\n`;
+    csv += `Total Completed Orders,${summary.totalOrders}\n`;
     csv += `Total Revenue,${summary.totalRevenue}\n`;
     csv += `Avg Order Value,${summary.avgOrderValue.toFixed(2)}\n`;
     csv += `Completion Rate,${summary.completionRate.toFixed(1)}%\n\n`;
     
-    csv += 'Top Flavors (All)\n';
+    csv += 'Top Flavors (Completed Orders)\n';
     summary.topFlavors.forEach((f) => {
       csv += `${f.rank}. ${f.name},${f.count}\n`;
     });
     
-    csv += '\nTop Toppings (All)\n';
+    csv += '\nTop Toppings (Completed Orders)\n';
     summary.topToppings.forEach((t) => {
       csv += `${t.rank}. ${t.name},${t.count}\n`;
     });
     
-    csv += '\nPeak Times (All)\n';
+    csv += '\nPeak Times (Completed Orders)\n';
     summary.peakTimes.forEach((p) => {
       csv += `${p.rank}. ${p.timeRange},${p.count}\n`;
     });
@@ -273,7 +287,6 @@ export default function SalesReportPage() {
   return (
     <div className="min-h-screen bg-[#EBE6DE] font-['Iceland']">
       <style jsx global>{`
-        /* Custom Scrollbar Design */
         .custom-scrollbar::-webkit-scrollbar {
           width: 8px;
           height: 8px;
@@ -294,7 +307,6 @@ export default function SalesReportPage() {
           background: rgba(105, 128, 108, 0.7);
         }
 
-        /* For Firefox */
         .custom-scrollbar {
           scrollbar-width: thin;
           scrollbar-color: rgba(105, 128, 108, 0.5) rgba(105, 128, 108, 0.1);
@@ -350,7 +362,9 @@ export default function SalesReportPage() {
               </div>
               <div className="bg-white rounded-lg shadow-lg p-6">
                 <p className="text-gray-600 text-sm mb-2">Completion Rate</p>
-                <p className="text-3xl font-bold text-[#69806C]">{summary.completionRate.toFixed(1)}%</p>
+                <p className={`text-3xl font-bold ${summary.completionRate >= 80 ? 'text-green-600' : summary.completionRate >= 60 ? 'text-yellow-600' : 'text-red-600'}`}>
+                  {summary.completionRate.toFixed(1)}%
+                </p>
               </div>
             </div>
 
@@ -430,7 +444,7 @@ export default function SalesReportPage() {
               <h3 className="text-2xl text-[#69806C] mb-4">📊 Sales Breakdown</h3>
               
               {salesData.length === 0 ? (
-                <p className="text-gray-500 text-center py-8">No sales data</p>
+                <p className="text-gray-500 text-center py-8">No completed orders in this period</p>
               ) : (
                 <div className="max-h-96 overflow-y-auto custom-scrollbar">
                   <table className="w-full">
@@ -457,7 +471,7 @@ export default function SalesReportPage() {
                     <tfoot>
                       <tr className="border-t-2 border-[#69806C] font-bold">
                         <td className="py-2 px-4" colSpan={2}>Total</td>
-                        <td className="text-center py-2 px-4">{summary.totalOrders}</td>
+                        <td className="text-center py-2 px-4">{summary.completedCount}</td>
                         <td className="text-right py-2 px-4">฿{summary.totalRevenue}</td>
                         <td className="text-right py-2 px-4">฿{summary.avgOrderValue.toFixed(2)}</td>
                       </tr>
