@@ -1,11 +1,11 @@
-// src/pages/review/index.tsx - Fixed: Hide reviewed orders + No hydration error
+// src/pages/review/index.tsx - Fixed: Hide Admin button for non-admin users
+
 'use client';
 
 import { useState, useEffect } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
-import { api, isAuthenticated } from '@/utils/api';
-import HeaderExclude from '../../components/HeaderExclude';
+import { api, isAuthenticated, isAdmin } from '@/utils/api';
 
 interface CustomerReview {
   _id?: string;
@@ -28,9 +28,13 @@ export default function ReviewPage() {
   const [completedOrders, setCompletedOrders] = useState<any[]>([]);
   const [selectedOrder, setSelectedOrder] = useState<any>(null);
   const [mounted, setMounted] = useState(false);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [isUserAdmin, setIsUserAdmin] = useState(false);
 
   useEffect(() => {
     setMounted(true);
+    setIsLoggedIn(isAuthenticated());
+    setIsUserAdmin(isAdmin());
     fetchReviews();
     checkIfCanReview();
   }, []);
@@ -64,14 +68,12 @@ export default function ReviewPage() {
       const result = await api.getMyOrders();
       const reviews = await api.getReviews(1, 100);
       
-      // ✅ Get reviewed order IDs
       const reviewedOrderIds = new Set(
         reviews.reviews
           .filter((r: any) => r.order?._id)
           .map((r: any) => r.order._id)
       );
       
-      // ✅ Filter out completed orders that haven't been reviewed
       const completed = result.orders.filter(
         (o: any) => o.status === 'Completed' && !reviewedOrderIds.has(o._id)
       );
@@ -149,14 +151,61 @@ export default function ReviewPage() {
     ? customerReviews.reduce((sum, r) => sum + r.rating, 0) / customerReviews.length
     : 0;
 
-  // ✅ Prevent hydration error
   if (!mounted) {
     return null;
   }
 
   return (
     <div className="relative w-full min-h-screen bg-[#EBE6DE] px-4 md:px-10 lg:px-20 py-10">
-      <HeaderExclude />
+      {/* Custom Header - Copy from HeaderExclude but with conditional Admin button */}
+      <div className="relative w-full max-w-7xl mx-auto h-[400px] rounded-[20px] overflow-hidden">
+        <svg className="absolute inset-0 w-full h-full" viewBox="0 0 2000 600" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <mask id="mask-xor">
+              <rect width="3000" height="600" rx="20" fill="white" />
+              <rect x="0" y="400" width="900" height="200" rx="10" fill="black" />
+            </mask>
+          </defs>
+          <rect width="3000" height="600" rx="20" fill="#D9D9D9" mask="url(#mask-xor)" />
+          <image xlinkHref="/images/ชาเขียว.jpg" x="0" y="0" width="100%" height="100%" preserveAspectRatio="xMidYMid slice" mask="url(#mask-xor)" />
+        </svg>
+
+        {/* Navigation Buttons */}
+        <div className="absolute top-[280px] left-0 right-0 flex flex-wrap gap-4">
+          <Link href={isLoggedIn ? "/profile" : "/login"}>
+            <div className="cursor-pointer flex flex-col justify-center items-center w-[100px] h-[100px] bg-[#69806C] rounded-[5px] shadow-[0_0_10px_rgba(0,0,0,0.25),0_10px_30px_rgba(0,0,0,0.25)] text-white font-['Iceland'] text-[24px] transition hover:scale-105">
+              {isLoggedIn ? "Profile" : "Login"}
+            </div>
+          </Link>
+
+          <Link href="/cart">
+            <div className="cursor-pointer flex flex-col justify-center items-center w-[100px] h-[100px] bg-[#69806C] rounded-[5px] shadow-[0_0_10px_rgba(0,0,0,0.25),0_10px_30px_rgba(0,0,0,0.25)] text-white font-['Iceland'] text-[24px] transition hover:scale-105">
+              Menu
+            </div>
+          </Link>
+
+          <Link href="/review">
+            <div className="cursor-pointer flex flex-col justify-center items-center w-[100px] h-[100px] bg-[#69806C] rounded-[5px] shadow-[0_0_10px_rgba(0,0,0,0.25),0_10px_30px_rgba(0,0,0,0.25)] text-white font-['Iceland'] text-[24px] transition hover:scale-105">
+              Review
+            </div>
+          </Link>
+
+          <Link href="/order">
+            <div className="cursor-pointer flex flex-col justify-center items-center w-[100px] h-[100px] bg-[#69806C] rounded-[5px] shadow-[0_0_10px_rgba(0,0,0,0.25),0_10px_30px_rgba(0,0,0,0.25)] text-white font-['Iceland'] text-[24px] transition hover:scale-105">
+              Order
+            </div>
+          </Link>
+
+          {/* ✅ Admin button - Only show for admin users */}
+          {isLoggedIn && isUserAdmin && (
+            <Link href="/admin">
+              <div className="cursor-pointer flex flex-col justify-center items-center w-[100px] h-[100px] bg-[#69806C] rounded-[5px] shadow-[0_0_10px_rgba(0,0,0,0.25),0_10px_30px_rgba(0,0,0,0.25)] text-white font-['Iceland'] text-[24px] transition hover:scale-105">
+                Admin
+              </div>
+            </Link>
+          )}
+        </div>
+      </div>
 
       {/* Section Title */}
       <div className="relative w-full mb-8 mt-4">
@@ -187,7 +236,6 @@ export default function ReviewPage() {
         {/* Review Form */}
         {!submitted ? (
           <div className="bg-white/80 border border-[#69806C] rounded-xl shadow-xl p-6 w-full max-w-xl flex flex-col items-center gap-6">
-            {/* Login/Order Required Warning */}
             {!isAuthenticated() && (
               <div className="w-full p-4 bg-yellow-50 border border-yellow-400 rounded-lg">
                 <p className="text-yellow-800 font-['Iceland'] text-center text-sm">
@@ -199,7 +247,7 @@ export default function ReviewPage() {
             {isAuthenticated() && !canReview && (
               <div className="w-full p-4 bg-orange-50 border border-orange-400 rounded-lg">
                 <p className="text-orange-800 font-['Iceland'] text-center mb-2 text-sm">
-                   You need to complete an order first!
+                  ⚠️ You need to complete an order first!
                 </p>
                 <Link href="/home">
                   <button className="w-full mt-2 px-4 py-2 bg-[#69806C] text-white rounded font-['Iceland'] hover:bg-[#5a6e5e]">
@@ -209,14 +257,12 @@ export default function ReviewPage() {
               </div>
             )}
 
-            {/* Error Message */}
             {error && (
               <div className="w-full p-3 bg-red-100 border border-red-400 text-red-700 rounded font-['Iceland'] text-sm">
                 {error}
               </div>
             )}
 
-            {/* Order Selector */}
             {canReview && completedOrders.length > 0 && (
               <div className="w-full">
                 <label className="block text-gray-700 font-['Iceland'] mb-2 text-sm">
@@ -253,7 +299,6 @@ export default function ReviewPage() {
               </div>
             )}
 
-            {/* Rating Selector */}
             <div>
               <p className="text-center text-gray-700 font-['Iceland'] mb-2 text-sm">
                 Rate your experience
@@ -282,7 +327,6 @@ export default function ReviewPage() {
               )}
             </div>
 
-            {/* Textarea */}
             <div className="w-full">
               <label className="block text-gray-700 font-['Iceland'] mb-2 text-sm">
                 Your Review (10-500 characters)
@@ -304,7 +348,6 @@ export default function ReviewPage() {
               </p>
             </div>
 
-            {/* Submit Button */}
             <button
               onClick={handleSubmit}
               disabled={loading || !canReview || rating === 0 || review.trim().length < 10 || !selectedOrder}
@@ -313,7 +356,6 @@ export default function ReviewPage() {
               {loading ? 'Submitting...' : 'Submit Review'}
             </button>
 
-            {/* Info */}
             <p className="text-xs text-gray-500 text-center font-['Iceland']">
               Your feedback helps us improve our service!
             </p>
@@ -368,7 +410,7 @@ export default function ReviewPage() {
                   {(r.shavedIceFlavor || r.toppings) && (
                     <div className="mb-2 p-2 bg-yellow-50 rounded text-xs font-['Iceland']">
                       <span className="text-yellow-800">
-                         Ordered: <strong>{r.shavedIceFlavor}</strong>
+                        ✅ Ordered: <strong>{r.shavedIceFlavor}</strong>
                         {r.toppings && r.toppings.length > 0 && ` + ${r.toppings.join(', ')}`}
                       </span>
                     </div>
