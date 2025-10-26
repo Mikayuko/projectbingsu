@@ -44,20 +44,44 @@ export default function HomePage() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [isUserAdmin, setIsUserAdmin] = useState(false);
 
-  useEffect(() => {
-    setMounted(true);
+  // ✅ แก้ไขส่วน useEffect และเพิ่ม checkAuthStatus
+useEffect(() => {
+  setMounted(true);
+  checkAuthStatus(); // เรียกทันที
+  fetchAllData();
+  
+  // ✅ เพิ่มการตรวจสอบทุก 1 วินาที
+  const interval = setInterval(() => {
     checkAuthStatus();
-    fetchAllData();
-    
-    // Check auth periodically
-    const interval = setInterval(checkAuthStatus, 2000);
-    return () => clearInterval(interval);
-  }, []);
-
-  const checkAuthStatus = () => {
-    setIsLoggedIn(isAuthenticated());
-    setIsUserAdmin(isAdmin());
+  }, 1000);
+  
+  // ✅ ฟัง storage events (เมื่อ login/logout)
+  const handleStorageChange = (e: StorageEvent) => {
+    if (e.key === 'token' || e.key === 'user') {
+      checkAuthStatus();
+    }
   };
+  
+  window.addEventListener('storage', handleStorageChange);
+  
+  return () => {
+    clearInterval(interval);
+    window.removeEventListener('storage', handleStorageChange);
+  };
+}, []);
+
+const checkAuthStatus = () => {
+  const loggedIn = isAuthenticated();
+  const adminStatus = isAdmin();
+  
+  // ✅ Update state เฉพาะเมื่อเปลี่ยนแปลง
+  if (loggedIn !== isLoggedIn) {
+    setIsLoggedIn(loggedIn);
+  }
+  if (adminStatus !== isUserAdmin) {
+    setIsUserAdmin(adminStatus);
+  }
+};
 
   const fetchAllData = async () => {
     await Promise.all([
