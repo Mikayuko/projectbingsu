@@ -374,12 +374,20 @@ export default function SalesReportPage() {
                 <h3 className="text-2xl font-bold mb-4">🍧 Top Flavors</h3>
                 {summary.topFlavors.length > 0 ? (
                   <div className="space-y-2 max-h-64 overflow-y-auto custom-scrollbar">
-                    {summary.topFlavors.map((flavor, idx) => (
-                      <div key={idx} className="bg-white/20 backdrop-blur-sm rounded-lg p-3 flex justify-between items-center">
-                        <span className="font-bold">#{flavor.rank} {flavor.name}</span>
-                        <span className="text-xl font-bold">{flavor.count}</span>
-                      </div>
-                    ))}
+                    {(() => {
+                      const grouped: { [key: number]: { names: string[], count: number } } = {};
+                      summary.topFlavors.forEach(flavor => {
+                        const rank = flavor.rank || 0;
+                        if (!grouped[rank]) grouped[rank] = { names: [], count: flavor.count };
+                        grouped[rank].names.push(flavor.name);
+                      });
+                      return Object.entries(grouped).map(([rank, data]) => (
+                        <div key={rank} className="bg-white/20 backdrop-blur-sm rounded-lg p-3 flex justify-between items-center">
+                          <span className="font-bold">#{rank} {data.names.join(', ')}</span>
+                          <span className="text-xl font-bold">{data.count}</span>
+                        </div>
+                      ));
+                    })()}
                   </div>
                 ) : (
                   <p className="text-white/70">No data</p>
@@ -390,12 +398,20 @@ export default function SalesReportPage() {
                 <h3 className="text-2xl font-bold mb-4">🍓 Top Toppings</h3>
                 {summary.topToppings.length > 0 ? (
                   <div className="space-y-2 max-h-64 overflow-y-auto custom-scrollbar">
-                    {summary.topToppings.map((topping, idx) => (
-                      <div key={idx} className="bg-white/20 backdrop-blur-sm rounded-lg p-3 flex justify-between items-center">
-                        <span className="font-bold">#{topping.rank} {topping.name}</span>
-                        <span className="text-xl font-bold">{topping.count}</span>
-                      </div>
-                    ))}
+                    {(() => {
+                      const grouped: { [key: number]: { names: string[], count: number } } = {};
+                      summary.topToppings.forEach(topping => {
+                        const rank = topping.rank || 0;
+                        if (!grouped[rank]) grouped[rank] = { names: [], count: topping.count };
+                        grouped[rank].names.push(topping.name);
+                      });
+                      return Object.entries(grouped).map(([rank, data]) => (
+                        <div key={rank} className="bg-white/20 backdrop-blur-sm rounded-lg p-3 flex justify-between items-center">
+                          <span className="font-bold">#{rank} {data.names.join(', ')}</span>
+                          <span className="text-xl font-bold">{data.count}</span>
+                        </div>
+                      ));
+                    })()}
                   </div>
                 ) : (
                   <p className="text-white/70">No data</p>
